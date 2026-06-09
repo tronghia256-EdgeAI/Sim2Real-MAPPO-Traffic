@@ -1275,7 +1275,7 @@ with st.sidebar:
         conf_thresh = st.slider("Confidence Threshold", 0.10, 0.90, 0.45, 0.05,
                                 disabled=not use_yolo)
         target_fps  = st.slider("Playback FPS", 1, 15, 5)
-        play_secs   = st.slider("Play Duration (seconds)", 5, 120, 30)
+
 
         st.markdown("---")
         st.subheader("MAPPO Inference")
@@ -1413,7 +1413,6 @@ if page == "Camera Dashboard":
         f"YOLO: **{'ON' if use_yolo else 'OFF'}** &nbsp;|&nbsp; "
         f"Conf: **{conf_thresh:.2f}** &nbsp;|&nbsp; "
         f"FPS: **{target_fps}** &nbsp;|&nbsp; "
-        f"Duration: **{play_secs}s** &nbsp;|&nbsp; "
         f"MAPPO: **{'ON' if use_mappo else 'OFF (simulated)'}**"
     )
 

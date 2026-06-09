@@ -1,3 +1,4 @@
+# DEPRECATED: Use orchestrator_v2.py for production multi-threading deployment.
 """
 system_orchestrator.py
 ======================
