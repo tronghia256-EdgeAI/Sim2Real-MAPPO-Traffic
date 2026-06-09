@@ -1,0 +1,9 @@
+Mode;Metric;No PPO (Fixed);PPO (AI)
+Hardcore;Total Waiting Time (vehicle-s);1747890.0;54503.0
+Hardcore;Mean Halted Vehicles (avg queue);88.71;8.22
+Hardcore;Average System Speed (km/h);6.17;20.87
+Normal;Total Waiting Time (vehicle-s);498842.0;21500.0
+Normal;Mean Halted Vehicles (avg queue);25.44;3.36
+Normal;Average System Speed (km/h);10.90;23.19
+;Throughput;5189 vehicles;1550.97 kg
+;CO2 Emissions;5345 vehicles;687.59 kg

@@ -1,0 +1,13 @@
+numpy
+torch
+tensorboard
+opencv-python
+ultralytics
+pyserial
+matplotlib
+sumolib
+traci
+pettingzoo
+gymnasium
+streamlit
+pandas

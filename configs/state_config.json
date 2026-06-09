@@ -1,0 +1,524 @@
+{
+  "schema_name": "mappo_traffic_control_production",
+  "version": "3.1.0",
+  "tls_ids": [
+    "tls_0",
+    "tls_1"
+  ],
+  "training_tls_ids": [
+    "J0",
+    "J2"
+  ],
+  "runtime_to_training_tls": {
+    "tls_0": "J0",
+    "tls_1": "J2"
+  },
+  "description": "Production-ready multi-agent MAPPO state schema for YOLO+ByteTrack based intelligent traffic signal control with lane-based observations, bidirectional pressure computation, temporal smoothing, and strict lane ordering.",
+  "system_params": {
+    "fps": 10,
+    "time_delta_sec": 0.1,
+    "speed_cap": 15.0,
+    "queue_cap": 50,
+    "waiting_cap": 300,
+    "vehicle_cap": 20,
+    "max_green_time": 60,
+    "px_per_meter": 20.0,
+    "stop_speed_m_s": 0.5,
+    "metrics_log_every": 20,
+    "throughput_cap": 10,
+    "vehicle_detection": {
+      "motorbike_class_ids": [
+        3
+      ],
+      "heavy_class_ids": [
+        1,
+        4
+      ],
+      "description": "YOLO model class IDs: 0=accident, 1=bus, 2=car, 3=motorcycle, 4=truck"
+    },
+    "temporal_smoothing": {
+      "buffer_ema_alpha": 0.6,
+      "description": "EMA smoothing factor [0,1]. 0=no smoothing, 1=no history. Recommended 0.5-0.7"
+    }
+  },
+  "multi_agent": {
+    "num_agents": 2,
+    "agent_type": "MAPPO",
+    "agent_mapping": {
+      "agent_0": "tls_0",
+      "agent_1": "tls_1"
+    },
+    "observation_type": "centralized_training_decentralized_execution"
+  },
+  "traffic_lights": {
+    "tls_ids": [
+      "tls_0",
+      "tls_1"
+    ],
+    "max_lanes_per_tls": 4
+  },
+  "controlled_lanes_dict": {
+    "tls_0": [
+      "lane_0",
+      "lane_1",
+      "lane_2",
+      "lane_3"
+    ],
+    "tls_1": [
+      "lane_4",
+      "lane_5",
+      "lane_6",
+      "lane_7"
+    ]
+  },
+  "vector_layout": {
+    "lane_feature_dim": 5,
+    "tls_feature_dim": 6,
+    "per_agent_observation_dim": 26,
+    "global_observation_dim": 52,
+    "calculation": "per_agent = max_lanes_per_tls * lane_feature_dim + tls_feature_dim = 4 * 5 + 6 = 26; global = 26 * 2 = 52"
+  },
+  "phase_action_map": {
+    "tls_0": [
+      0,
+      2
+    ],
+    "tls_1": [
+      0,
+      2
+    ]
+  },
+  "ordering_rules": {
+    "lane_order_rule": "CRITICAL: Use exact lane order from controlled_lanes_dict. Never reorder lanes. Lane order must match perfectly between training and inference.",
+    "padding_rule": "Pad missing lane slots with zeros (0.0) at tail. For tls_0: lanes[0:24], then tls_features[24:28]",
+    "truncation_rule": "Keep only first max_lanes_per_tls lanes. If TLS has > 4 lanes, truncate to 4 and warn.",
+    "missing_value_rule": "avg_speed=0 if no vehicles; waiting_time=0 if empty; occupancy=0 if empty; throughput=0 if empty"
+  },
+  "lane_groups": {
+    "lane_group_type": "bidirectional_pressure",
+    "description": "Two opposing lane groups per TLS. Pressure = (group_A_vehicle_count + group_A_queue_length) - (group_B_vehicle_count + group_B_queue_length)",
+    "tls_0": [
+      [
+        "lane_0",
+        "lane_1"
+      ],
+      [
+        "lane_2",
+        "lane_3"
+      ]
+    ],
+    "tls_1": [
+      [
+        "lane_4",
+        "lane_5"
+      ],
+      [
+        "lane_6",
+        "lane_7"
+      ]
+    ]
+  },
+  "lane_definitions": {
+    "lane_0": {
+      "lane_id": "lane_0",
+      "tls_id": "tls_0",
+      "cam_id": 0,
+      "lane_length_px": 147,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          100,
+          588
+        ],
+        [
+          180,
+          588
+        ],
+        [
+          180,
+          719
+        ],
+        [
+          100,
+          719
+        ]
+      ],
+      "camera_frame": "cam_0_frame"
+    },
+    "lane_1": {
+      "lane_id": "lane_1",
+      "tls_id": "tls_0",
+      "cam_id": 1,
+      "lane_length_px": 147,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          220,
+          588
+        ],
+        [
+          300,
+          588
+        ],
+        [
+          300,
+          719
+        ],
+        [
+          220,
+          719
+        ]
+      ],
+      "camera_frame": "cam_1_frame"
+    },
+    "lane_2": {
+      "lane_id": "lane_2",
+      "tls_id": "tls_0",
+      "cam_id": 2,
+      "lane_length_px": 147,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          1000,
+          573
+        ],
+        [
+          1080,
+          573
+        ],
+        [
+          1080,
+          719
+        ],
+        [
+          1000,
+          719
+        ]
+      ],
+      "camera_frame": "cam_2_frame"
+    },
+    "lane_3": {
+      "lane_id": "lane_3",
+      "tls_id": "tls_0",
+      "cam_id": 3,
+      "lane_length_px": 147,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          1120,
+          573
+        ],
+        [
+          1200,
+          573
+        ],
+        [
+          1200,
+          719
+        ],
+        [
+          1120,
+          719
+        ]
+      ],
+      "camera_frame": "cam_3_frame"
+    },
+    "lane_4": {
+      "lane_id": "lane_4",
+      "tls_id": "tls_1",
+      "cam_id": 4,
+      "lane_length_px": 180,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          100,
+          200
+        ],
+        [
+          180,
+          200
+        ],
+        [
+          180,
+          380
+        ],
+        [
+          100,
+          380
+        ]
+      ],
+      "camera_frame": "cam_4_frame"
+    },
+    "lane_5": {
+      "lane_id": "lane_5",
+      "tls_id": "tls_1",
+      "cam_id": 5,
+      "lane_length_px": 180,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          220,
+          200
+        ],
+        [
+          300,
+          200
+        ],
+        [
+          300,
+          380
+        ],
+        [
+          220,
+          380
+        ]
+      ],
+      "camera_frame": "cam_5_frame"
+    },
+    "lane_6": {
+      "lane_id": "lane_6",
+      "tls_id": "tls_1",
+      "cam_id": 6,
+      "lane_length_px": 180,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          1000,
+          220
+        ],
+        [
+          1080,
+          220
+        ],
+        [
+          1080,
+          380
+        ],
+        [
+          1000,
+          380
+        ]
+      ],
+      "camera_frame": "cam_6_frame"
+    },
+    "lane_7": {
+      "lane_id": "lane_7",
+      "tls_id": "tls_1",
+      "cam_id": 7,
+      "lane_length_px": 180,
+      "lane_width_px": 40,
+      "polygon": [
+        [
+          1120,
+          220
+        ],
+        [
+          1200,
+          220
+        ],
+        [
+          1200,
+          380
+        ],
+        [
+          1120,
+          380
+        ]
+      ],
+      "camera_frame": "cam_7_frame"
+    }
+  },
+  "features": {
+    "lane_features": [
+      {
+        "index": 0,
+        "name": "vehicle_count",
+        "description": "Number of actively tracked vehicles in lane",
+        "normalization": {
+          "type": "min_max",
+          "max_value": 20,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clamp(vehicle_count / vehicle_cap, 0, 1)"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 1,
+        "name": "queue_length",
+        "description": "Number of stopped/queued vehicles (speed <= stop_speed_px_s)",
+        "normalization": {
+          "type": "min_max",
+          "max_value": 50,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clamp(queue_length / queue_cap, 0, 1)"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 2,
+        "name": "waiting_time",
+        "description": "Average waiting time of vehicles in lane (seconds)",
+        "normalization": {
+          "type": "min_max",
+          "max_value": 300,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clamp(avg_waiting_time / waiting_cap, 0, 1)"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 3,
+        "name": "avg_speed",
+        "description": "Average speed of vehicles in lane (m/s)",
+        "normalization": {
+          "type": "min_max",
+          "max_value": 15.0,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clamp(avg_speed / speed_cap, 0, 1)"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 4,
+        "name": "occupancy",
+        "description": "Fraction of lane occupied by vehicle bboxes",
+        "normalization": {
+          "type": "clip",
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clamp(total_bbox_area / (lane_length_px * lane_width_px), 0, 1)"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 5,
+        "name": "throughput",
+        "description": "Number of vehicles exiting lane per second",
+        "normalization": {
+          "type": "min_max",
+          "max_value": 10,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clamp(vehicles_exited_per_sec / throughput_cap, 0, 1)"
+        },
+        "missing_value": 0.0
+      }
+    ],
+    "tls_features": [
+      {
+        "index": 0,
+        "name": "pressure",
+        "description": "Bidirectional pressure: (group_A_vehicle + group_A_queue) - (group_B_vehicle + group_B_queue)",
+        "normalization": {
+          "type": "tanh",
+          "scale": 70.0,
+          "range": [
+            -1.0,
+            1.0
+          ],
+          "formula": "tanh(raw_pressure / (queue_cap + vehicle_cap))"
+        },
+        "notes": "Pressure can be negative (preference for other direction). Tanh ensures stable [-1,1] range for training stability."
+      },
+      {
+        "index": 1,
+        "name": "phase_id",
+        "description": "Current phase of traffic light (0 or 1)",
+        "normalization": {
+          "type": "one_hot",
+          "num_classes": 2,
+          "range": [
+            0.0,
+            1.0
+          ]
+        },
+        "notes": "One-hot encoding: phase_0=[1,0], phase_1=[0,1]. In observation: [phase_one_hot[0]], index 1 is occupied by phase_one_hot[1]"
+      },
+      {
+        "index": 2,
+        "name": "time_in_phase",
+        "description": "Time elapsed in current phase (seconds)",
+        "normalization": {
+          "type": "min_max",
+          "max_value": 90,
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clamp(time_in_phase_sec / max_green_time, 0, 1)"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 3,
+        "name": "accident_flag",
+        "description": "Binary indicator of accident/anomaly in TLS lanes (from external detector)",
+        "normalization": {
+          "type": "binary",
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "1.0 if accident_detected else 0.0"
+        },
+        "missing_value": 0.0,
+        "notes": "Can be sourced from external anomaly detector or TLS state"
+      }
+    ]
+  },
+  "temporal_smoothing": {
+    "enabled": true,
+    "method": "ema",
+    "alpha": 0.3,
+    "description": "Exponential Moving Average for smoother state transitions. new_state = alpha * current + (1-alpha) * prev_state",
+    "apply_to": [
+      "vehicle_count",
+      "queue_length",
+      "avg_speed",
+      "pressure"
+    ]
+  },
+  "roi_association": {
+    "primary_method": "polygon_iou",
+    "primary_threshold": 0.5,
+    "fallback_method": "centroid_inside_polygon",
+    "fallback_threshold": null,
+    "description": "Primary: compute IoU between detection bbox and lane polygon. If IoU >= 0.5, assign to lane. Fallback: check if detection centroid is inside lane polygon."
+  },
+  "data_collection": {
+    "missing_value_handling": "default_to_zero",
+    "nan_handling": "default_to_zero",
+    "outlier_clipping": "enabled"
+  },
+  "training_stability": {
+    "observation_normalization": "essential",
+    "pressure_range": "[-1, 1]",
+    "speed_range": "[0, 1]",
+    "occupancy_range": "[0, 1]",
+    "notes": "All features must be in valid ranges for stable PPO training"
+  },
+  "paper_compliance": {
+    "lane_based": true,
+    "multi_agent": true,
+    "bidirectional_pressure": true,
+    "temporal_smoothing": true,
+    "camera_frame_roi": true,
+    "notes": "Configuration suitable for academic publication (Q1/Q2 venues)"
+  }
+}

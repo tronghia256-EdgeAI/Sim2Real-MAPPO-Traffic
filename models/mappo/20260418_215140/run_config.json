@@ -1,0 +1,144 @@
+{
+  "run_id": "20260418_215140",
+  "env_cfg": {
+    "version": "1.0.1",
+    "sim": {
+      "sumo_cfg_path": "sumo_configs/training/sumo_config.sumocfg",
+      "gui": false,
+      "step_length": 5,
+      "yellow_time": 3,
+      "max_steps": 1080,
+      "min_green_time": 10,
+      "max_green_time": 60,
+      "seed": null,
+      "debug": false
+    },
+    "multi_agent": {
+      "tls_ids": [
+        "J0",
+        "J2"
+      ],
+      "max_lanes_per_tls": 4,
+      "shared_policy": true,
+      "action_mode": "discrete_phase",
+      "centralized_value": true,
+      "num_agents": 2
+    },
+    "observation": {
+      "lane_feature_names": [
+        "effective_queue_norm",
+        "occupancy_norm",
+        "avg_speed_norm",
+        "motorbike_share",
+        "heavy_vehicle_share"
+      ],
+      "tls_feature_names": [
+        "phase_one_hot_0",
+        "phase_one_hot_1",
+        "phase_one_hot_2",
+        "phase_one_hot_3",
+        "green_timer_norm",
+        "pressure_norm"
+      ],
+      "queue_cap": 50.0,
+      "waiting_cap": 300.0,
+      "speed_cap": 15.0,
+      "use_external_state": false,
+      "lane_feature_dim": 5,
+      "tls_feature_dim": 6,
+      "local_obs_dim": 26,
+      "global_state_dim": 52,
+      "observation_dim": 52
+    },
+    "reward": {
+      "weights": {
+        "queue": -1.0,
+        "throughput": 1.0,
+        "switch_penalty": -0.1,
+        "high_queue_penalty": -0.15,
+        "low_speed_penalty": -0.25,
+        "waiting_time": -0.5
+      },
+      "reward_scale": 1.0,
+      "reward_clip_low": -2.0,
+      "reward_clip_high": 2.0,
+      "throughput_norm_divisor": 20.0,
+      "queue_high_threshold": 0.7,
+      "low_speed_threshold": 0.2,
+      "jam_speed_threshold": 0.5,
+      "jam_queue_threshold": 0.5
+    },
+    "vision": {
+      "enabled": false,
+      "buffer_size": 30,
+      "confidence_threshold": 0.35,
+      "iou_threshold": 0.45,
+      "min_track_age": 2,
+      "max_track_gap": 10,
+      "camera_ids": []
+    },
+    "manual_lane_groups": {
+      "J0": [
+        [
+          "-E5_0",
+          "-E5_1",
+          "-E6_0",
+          "-E6_1"
+        ],
+        [
+          "-E0_0",
+          "-E0_1",
+          "-E1_0",
+          "-E1_1"
+        ]
+      ],
+      "J2": [
+        [
+          "-E3_0",
+          "-E3_1",
+          "-E4_0",
+          "-E4_1"
+        ],
+        [
+          "-E1_0",
+          "-E1_1",
+          "-E2_0",
+          "-E2_1"
+        ]
+      ]
+    }
+  },
+  "train_cfg": {
+    "seed": 42,
+    "total_timesteps": 2000000,
+    "rollout_horizon": 128,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "normalize_advantages": true,
+    "clip_range_vf": 0.2,
+    "clip_ratio": 0.2,
+    "target_kl": 0.015,
+    "policy_lr": 0.0003,
+    "value_lr": 0.0003,
+    "update_epochs": 10,
+    "minibatch_size": 256,
+    "entropy_coef_start": 0.01,
+    "entropy_coef_end": 0.001,
+    "value_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "log_dir": "logs/rl",
+    "ckpt_dir": "models/rl",
+    "save_every_steps": 50000,
+    "save_latest_every_updates": 1,
+    "eval_episodes": 5,
+    "eval_max_steps": 400,
+    "device": "cpu"
+  },
+  "tls_ids": [
+    "J0",
+    "J2"
+  ],
+  "obs_dim": 26,
+  "state_dim": 52,
+  "action_dim": 2
+}

@@ -1,0 +1,107 @@
+{
+  "global": {
+    "frame_width": 1280,
+    "frame_height": 720,
+    "fps": 10
+  },
+
+  "cameras": [
+    {
+      "id": "cam_0",
+      "name": "j0_north",
+      "source": "data/raw_video/video1.mp4",
+      "direction": "north",
+      "intersection": "J0",
+      "tls_id": "tls_0",
+      "phase_group": "A",
+      "lanes": ["lane_0"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    },
+    {
+      "id": "cam_1",
+      "name": "j0_south",
+      "source": "data/raw_video/video2.mp4",
+      "direction": "south",
+      "intersection": "J0",
+      "tls_id": "tls_0",
+      "phase_group": "A",
+      "lanes": ["lane_1"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    },
+    {
+      "id": "cam_2",
+      "name": "j0_east",
+      "source": "data/raw_video/video3.mp4",
+      "direction": "east",
+      "intersection": "J0",
+      "tls_id": "tls_0",
+      "phase_group": "B",
+      "lanes": ["lane_2"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    },
+    {
+      "id": "cam_3",
+      "name": "j0_west",
+      "source": "data/raw_video/video4.mp4",
+      "direction": "west",
+      "intersection": "J0",
+      "tls_id": "tls_0",
+      "phase_group": "B",
+      "lanes": ["lane_3"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    },
+
+    {
+      "id": "cam_4",
+      "name": "j2_north",
+      "source": "data/raw_video/video5.mp4",
+      "direction": "north",
+      "intersection": "J2",
+      "tls_id": "tls_1",
+      "phase_group": "A",
+      "lanes": ["lane_4"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    },
+    {
+      "id": "cam_5",
+      "name": "j2_south",
+      "source": "data/raw_video/video6.mp4",
+      "direction": "south",
+      "intersection": "J2",
+      "tls_id": "tls_1",
+      "phase_group": "A",
+      "lanes": ["lane_5"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    },
+    {
+      "id": "cam_6",
+      "name": "j2_east",
+      "source": "data/raw_video/video7.mp4",
+      "direction": "east",
+      "intersection": "J2",
+      "tls_id": "tls_1",
+      "phase_group": "B",
+      "lanes": ["lane_6"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    },
+    {
+      "id": "cam_7",
+      "name": "j2_west",
+      "source": "data/raw_video/video8.mp4",
+      "direction": "west",
+      "intersection": "J2",
+      "tls_id": "tls_1",
+      "phase_group": "B",
+      "lanes": ["lane_7"],
+      "roi": [0.0, 0.0, 1.0, 1.0],
+      "enabled": true
+    }
+  ]
+}
