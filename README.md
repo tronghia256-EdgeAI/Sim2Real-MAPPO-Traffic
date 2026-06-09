@@ -1,270 +1,485 @@
-# Traffic-Guard-AI
+<div align="center">
 
-**MAPPO-based intelligent traffic signal control** with real-time vehicle detection, accident alerting, and Arduino hardware integration.
+# 🚦 Sim2Real-MAPPO-Traffic
 
-| Component | Technology |
-|-----------|-----------|
-| Multi-agent RL | MAPPO (decentralized actors, shared critic) |
-| Simulation | SUMO + TraCI |
-| Detection | YOLOv8s + ByteTrack |
-| Hardware | Arduino (serial, 115200 baud) |
-| Alerting | Telegram Bot API |
+### Multi-Agent Deep Reinforcement Learning for Intelligent Traffic Signal Control
+#### *Bridging the Simulation-to-Reality Gap with Vision-Based State & Reward Proxies*
 
----
+[![Stars](https://img.shields.io/github/stars/YOUR_USERNAME/Sim2Real-MAPPO-Traffic?style=for-the-badge&logo=github&color=f59e0b)](https://github.com/YOUR_USERNAME/Sim2Real-MAPPO-Traffic/stargazers)
+[![Forks](https://img.shields.io/github/forks/YOUR_USERNAME/Sim2Real-MAPPO-Traffic?style=for-the-badge&logo=github&color=6366f1)](https://github.com/YOUR_USERNAME/Sim2Real-MAPPO-Traffic/network/members)
+[![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
+[![Python](https://img.shields.io/badge/Python-3.9%2B-3b82f6?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![SUMO](https://img.shields.io/badge/SUMO-1.18%2B-f97316?style=for-the-badge)](https://sumo.dlr.de/)
+[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-7c3aed?style=for-the-badge)](https://github.com/ultralytics/ultralytics)
 
-## System Architecture
+<br/>
 
-```
-┌─────────────────── PRODUCTION PIPELINE ────────────────────┐
-│                                                             │
-│  8 Cameras ──► MultiCameraManager (8 threads)              │
-│                        │                                   │
-│                DetectorManager                             │
-│              (YOLOv8s + ByteTrack, 1 worker/cam)           │
-│                        │                                   │
-│           ┌────────────┴─────────────┐                     │
-│           │                          │                     │
-│  AccidentEventDetector        VisionToState.build_packet() │
-│  (3-frame confirm)            (snapshot → obs[52,])        │
-│  Telegram alert + JPEG               │                     │
-│                               VisionBuffer.push()          │
-│                               (EMA α=0.6, smoothed)        │
-│                                      │                     │
-│                         obs[0:26] ──► Actor tls_0          │
-│                         obs[26:52] ─► Actor tls_1          │
-│                                      │                     │
-│                         actions_to_serial_times()          │
-│                         [t0_d0,t0_d1,t0_d2,t0_d3,         │
-│                          t1_d0,t1_d1,t1_d2,t1_d3]         │
-│                                      │                     │
-│                         SerialBridge ──► Arduino (COM3)    │
-└─────────────────────────────────────────────────────────────┘
+[📖 Overview](#-project-overview) &nbsp;·&nbsp;
+[✨ Features](#-key-features) &nbsp;·&nbsp;
+[🏗️ Architecture](#-system-architecture) &nbsp;·&nbsp;
+[⚖️ Sim-to-Real Alignment](#-sim-to-real-metric-alignment) &nbsp;·&nbsp;
+[🚀 Quick Start](#-installation--setup) &nbsp;·&nbsp;
+[📊 Dashboard](#-how-to-run) &nbsp;·&nbsp;
+[📚 References](#-references--acknowledgments)
 
-┌────────────── TRAINING PIPELINE ──────────────┐
-│                                               │
-│  SUMO ──► MappoTrafficEnv (PettingZoo-style)  │
-│           ObservationBuilder (26-dim/agent)   │
-│           RewardCalculator                    │
-│                    │                          │
-│              train_ppo.py ──► last_model.pt   │
-└───────────────────────────────────────────────┘
-```
-
-### Observation Vector (per agent, 26-dim)
-
-```
-Lane ×4:  [effective_queue_norm, occupancy_norm, avg_speed_norm,
-           motorbike_share, heavy_vehicle_share]        → 20 dims
-TLS:      [phase_0, phase_1, phase_2, phase_3,
-           green_timer_norm, pressure_norm]             →  6 dims
-```
-
-### Custom YOLO Class IDs (not COCO)
-
-| ID | Class |
-|----|-------|
-| 0 | accident |
-| 1 | bus |
-| 2 | car |
-| 3 | motorcycle |
-| 4 | truck |
+</div>
 
 ---
 
-## Prerequisites
+## 📖 Project Overview
 
-- Python ≥ 3.9
-- [SUMO](https://sumo.dlr.de/docs/Installing/index.html) — set `SUMO_HOME` environment variable
-- CUDA-capable GPU recommended for YOLOv8 inference
+Traffic Signal Control (TSC) using deep reinforcement learning has shown strong results in simulation — but deployed systems routinely **fail to generalize** because simulators like SUMO provide privileged metrics (exact queue lengths, per-vehicle waiting timers, network throughput counts) that do not exist in the real world.
+
+**Sim2Real-MAPPO-Traffic** is a full-stack framework that closes this gap. It trains a decentralized [MAPPO](https://arxiv.org/abs/2103.01955) policy entirely inside SUMO, then deploys the same trained weights to control real intersections using only a camera stream — with no simulator at inference time. The key insight is that every reward signal and observation feature used during training has a **vision proxy** computable from YOLOv8 detections and ByteTrack trajectories:
+
+| Simulation Metric | Vision Proxy |
+|---|---|
+| `traci.lane.getLastStepHaltingNumber` | Halted vehicles in ROI polygon (speed < threshold) |
+| `traci.lane.getWaitingTime` | Accumulated halt duration per ByteTrack ID |
+| `simulation.getArrived()` | Track IDs exiting camera ROI per second |
+| Phase index (0–3) | Timestamp-based TLS state machine |
+
+The reward function is grounded in the **PRESSLIGHT** (KDD 2019) and **CoLight** (CIKM 2019) formulations, extended with a nonlinear queue penalty and cooperative throughput signal.
 
 ---
 
-## Installation
+## ✨ Key Features
+
+- 🤝 **Decentralized Multi-Agent Coordination** — Two MAPPO agents (one per intersection) share a centralized critic during training but act independently at inference, making deployment trivially scalable.
+
+- 📐 **Phase-Aware Pressure Reward** — Implements the PRESSLIGHT pressure signal `max((Σ red_queue − Σ green_queue) / N_lanes, 0)`, which directly penalizes choosing the wrong phase regardless of absolute traffic volume.
+
+- 🎯 **Nonlinear Queue Penalty** — `mean_q²` amplifies gradient during sustained congestion while staying near-zero in free-flow, preventing noisy updates on lightly-loaded intersections.
+
+- 👁️ **Full Vision Pipeline** — YOLOv8s (custom 5-class model: accident / bus / car / motorcycle / truck) + ByteTrack multi-object tracking, running in parallel per-camera threads.
+
+- 📦 **Production Orchestrator** — Multi-threaded runtime with safe-mode fallback (>25% stale cameras → hold phase), automatic policy failure recovery (fixed-cycle fallback), and dry-run mode for testing without hardware.
+
+- 🖥️ **Real-Time Streamlit Dashboard** — Live 8-camera feed with YOLO bounding boxes, 3-colour TLS SVG with real yellow-transition logic, per-intersection vehicle type breakdown, and direct Arduino serial control.
+
+- 🔌 **Arduino Integration** — Dashboard connects to an Arduino traffic-light controller via SerialBridge (`<S0,...,S7>\n` protocol, 115200 baud), sends RYG commands only on state change + 1-second heartbeat.
+
+- 🛡️ **Robust Checkpoint Loading** — `PolicyLoader` auto-strips common key prefixes (`net.`, `actor.`, `module.`, `_nn_module.net.`) so checkpoints from any training framework load cleanly.
+
+- 🚨 **Accident Detection** — 3-frame confirmation logic with Telegram alert and JPEG snapshot saved to `logs/events/`.
+
+---
+
+## 🏗️ System Architecture
+
+### Training Pipeline (SUMO)
+
+```
+┌─────────────────────────────────────────────────────────────────────┐
+│                        SUMO Simulator                               │
+│  traci.lane.*  ──►  ObservationBuilder  ──►  26-dim obs per agent  │
+│  traci.tls.*   ──►  RewardCalculator    ──►  PRESSLIGHT reward      │
+└────────────────────────────┬────────────────────────────────────────┘
+                             │
+                    MappoTrafficEnv (PettingZoo-style)
+                             │
+              ┌──────────────┴───────────────┐
+              │          MAPPO Trainer        │
+              │  Centralized Critic (global)  │
+              │  Decentralized Actors (×2)    │
+              └──────────────┬───────────────┘
+                             │
+                    best_model.pt  ◄─── saved checkpoint
+```
+
+### Deployment Pipeline (Real-Time)
+
+```
+  ┌──────────┐   ┌──────────┐         ┌──────────┐   ┌──────────┐
+  │  Cam 0   │   │  Cam 1   │   ...   │  Cam 6   │   │  Cam 7   │
+  │ j0_north │   │ j0_south │         │ j2_east  │   │ j2_west  │
+  └────┬─────┘   └────┬─────┘         └────┬─────┘   └────┬─────┘
+       │              │                    │              │
+       └──────────────┴────────────────────┴──────────────┘
+                              │  (8 parallel threads)
+                    MultiCameraManager
+                              │
+                    DetectorManager  ◄── YOLOv8s + ByteTrack
+                              │          (one worker per camera)
+                    AccidentEventDetector
+                              │  3-frame confirm → Telegram + JPEG
+                    VisionToState.build_packet()
+                              │
+                    ┌─────────▼──────────┐
+                    │  StateExtractor    │
+                    │  ROI point-in-poly │  ◄── lane_definitions
+                    │  5 features/lane   │      (state_config.json)
+                    │  6 TLS features    │
+                    └─────────┬──────────┘
+                              │
+                    VisionBuffer  ◄── EMA smoothing (α = 0.6)
+                              │
+                    ┌─────────▼──────────┐
+                    │  PolicyInterface   │
+                    │  MAPPO Inference   │  ◄── best_model.pt
+                    │  obs[0:26] → tls_0 │
+                    │  obs[26:52]→ tls_1 │
+                    └─────────┬──────────┘
+                              │  {tls_id: phase_action ∈ {0,1}}
+               ┌──────────────┴──────────────┐
+               ▼                             ▼
+      SerialBridge                   Streamlit Dashboard
+   <S0,S1,...,S7>\n                  Live SVG TLS + metrics
+        │
+   Arduino Controller
+   (COM3, 115200 baud)
+```
+
+### Observation Vector Layout (52-dim global)
+
+```
+ ◄──────────── Agent 0 / tls_0 (26 dims) ────────────►◄──── Agent 1 / tls_1 (26 dims) ────►
+ [ lane_0(5) | lane_1(5) | lane_2(5) | lane_3(5) | TLS(6) | lane_4..7(20) | TLS(6) ]
+
+ Lane features (×5):  effective_queue_norm | occupancy_norm | avg_speed_norm
+                       motorbike_share      | heavy_vehicle_share
+
+ TLS features  (×6):  phase_one_hot[0..3] (4-dim) | green_timer_norm | pressure_norm
+```
+
+---
+
+## ⚖️ Sim-to-Real Metric Alignment
+
+Every training signal has a vision proxy so the policy generalizes without retraining.
+
+| Reward Component | SUMO Source (Training) | Vision Proxy (Inference) | Alignment |
+|---|---|---|---|
+| `queue_penalty` | `getLastStepHaltingNumber / cap` | Halted vehicles in ROI / cap | ✅ Good |
+| `pressure_penalty` | Halting counts partitioned by phase group | Same, using ROI polygon membership | ✅ Good |
+| `throughput_reward` | `simulation.getArrived()` delta | ByteTrack IDs exiting ROI per step | ⚠️ Partial\* |
+| `switch_penalty` | Action comparison | Action comparison (identical logic) | ✅ Exact |
+| `low_speed_penalty` | `getLastStepMeanSpeed` | Pixel-displacement speed estimate | ⚠️ Noisy† |
+| `waiting_penalty` | `getWaitingTime / waiting_cap` | Queue proxy (no per-vehicle timer) | ⚠️ Proxy |
+
+> \* SUMO counts vehicles leaving the **entire network**; ByteTrack counts track IDs exiting a **camera ROI**. Reduce `throughput_norm_divisor` or pass per-intersection delta when using vision.
+>
+> † Pixel-displacement speed is significantly noisier than SUMO ground truth. Consider setting `"low_speed_penalty": 0.0` in `RewardConfig.weights` for vision deployment.
+
+### Default Reward Weights
+
+```python
+DEFAULT_REWARD_WEIGHTS = {
+    "queue":             -1.0,   # nonlinear (mean_q²) — primary congestion signal
+    "pressure":          -0.5,   # PRESSLIGHT phase-aware imbalance
+    "throughput":        +1.0,   # cooperative cleared-vehicles
+    "switch_penalty":    -0.1,   # phase-switching cost
+    "low_speed_penalty": -0.2,   # mean speed below threshold
+    "waiting_time":      -0.3,   # accumulated delay
+}
+# Effective output range: [-1.94, +0.50]  →  clipped to [-2.0, +1.5]
+```
+
+---
+
+## 🚀 Installation & Setup
+
+### 1. Clone the Repository
 
 ```bash
-git clone <repo-url>
-cd Traffic-Guard-AI-main
+git clone https://github.com/YOUR_USERNAME/Sim2Real-MAPPO-Traffic.git
+cd Sim2Real-MAPPO-Traffic
+```
 
+### 2. Install SUMO
+
+SUMO is required for **training only**. Skip this step for inference/dashboard use.
+
+```bash
+# Ubuntu / Debian
+sudo apt-get install sumo sumo-tools sumo-doc
+
+# macOS (Homebrew)
+brew install sumo
+
+# Windows — download installer from:
+# https://sumo.dlr.de/docs/Downloads.php
+```
+
+Then set the environment variable:
+
+```bash
+# Linux / macOS
+export SUMO_HOME=/usr/share/sumo   # adjust to your installation path
+
+# Windows (PowerShell)
+$env:SUMO_HOME = "C:\Program Files (x86)\Eclipse\Sumo"
+```
+
+### 3. Create a Virtual Environment
+
+```bash
+python -m venv .venv
+
+# Linux / macOS
+source .venv/bin/activate
+
+# Windows
+.venv\Scripts\activate
+```
+
+### 4. Install Python Dependencies
+
+```bash
 pip install -r requirements.txt
 ```
 
-**Key dependencies installed by `requirements.txt`:**
+### 5. Configure Telegram Alerts *(optional)*
 
 ```bash
-pip install torch torchvision          # PyTorch
-pip install ultralytics                # YOLOv8
-pip install pyserial                   # Arduino serial bridge
-pip install python-telegram-bot        # Telegram alerting
-pip install traci eclipse-sumo         # SUMO Python bindings (fallback)
-```
-
-> **SUMO must be installed separately.** Verify with `sumo --version` and confirm `$SUMO_HOME` is set.
-
----
-
-## Configuration
-
-| File | Purpose |
-|------|---------|
-| `configs/state_config.json` | Obs schema, lane ROI polygons, TLS ID mapping |
-| `configs/camera_config.json` | 8 camera sources (`data/raw_video/*.mp4` for testing) |
-| `configs/serial.json` | Arduino port (`COM3`), baud rate, yellow/red gap |
-| `configs/tele.json` | Telegram `API_TOKEN` + `CHAT_ID` |
-
-```bash
-# Copy Telegram template and fill in credentials
 cp configs/tele_example.json configs/tele.json
+# Edit configs/tele.json — fill in your API_TOKEN and CHAT_ID
 ```
 
 ---
 
-## How to Run
+## 🎮 How to Run
 
-### Step 1 — Train the MAPPO Policy (SUMO Simulation)
-
-```bash
-# Windows: set SUMO_HOME=C:\Program Files (x86)\Eclipse\Sumo
-# Linux:   export SUMO_HOME=/usr/share/sumo
-
-python train_ppo.py
-# Checkpoint saved to: models/rl/<timestamp>/last_model.pt
-```
-
-Evaluate trained policy with SUMO GUI:
+### Mode A — Training (MAPPO inside SUMO)
 
 ```bash
+# Train with default hyperparameters
 python experiment/test_ppo.py
+
+# Evaluate a saved checkpoint
+python experiment/test_ppo.py \
+  --checkpoint models/mappo/20260418_215140/best_model.pt \
+  --episodes 10 \
+  --gui          # open SUMO GUI for visualization
 ```
 
-Compare against fixed-time baseline:
+Training logs are written to `logs/rl/<run_name>/`:
 
-```bash
-python experiment/test_baseline.py
-```
+| File | Contents |
+|---|---|
+| `train_episodes.csv` | Per-episode reward, throughput, queue, waiting |
+| `train_updates.csv` | Policy loss, value loss, entropy per PPO update |
+| `best_model.pt` | Best checkpoint by mean episode reward |
 
 ---
 
-### Step 2 — Run the Production System (Vision + Hardware Bridge)
-
-**With Arduino hardware:**
+### Mode B — Production Deployment (Orchestrator)
 
 ```bash
+# Full deployment: cameras + YOLO + MAPPO + Arduino
 python src/core/system_orchestrator.py \
   --config        configs/state_config.json \
   --camera-config configs/camera_config.json \
   --model         models/yolo/best.pt \
-  --policy        models/rl/<timestamp>/last_model.pt \
+  --policy        models/mappo/20260418_215140/best_model.pt \
   --serial-port   COM3
-```
 
-**Dry-run (no Arduino — software only):**
-
-```bash
+# Dry-run — no Arduino hardware required
 python src/core/system_orchestrator.py \
   --model  models/yolo/best.pt \
-  --policy models/rl/<timestamp>/last_model.pt \
+  --policy models/mappo/20260418_215140/best_model.pt \
   --no-serial
 ```
 
-**Key CLI flags:**
+**Fail-safe behaviours at runtime:**
 
-| Flag | Default | Description |
-|------|---------|-------------|
-| `--hz` | `2.0` | Control loop frequency (Hz) |
-| `--buffer` | `5` | VisionBuffer depth (frames) |
-| `--log-level` | `INFO` | `DEBUG` / `INFO` / `WARNING` |
-| `--no-serial` | — | Disable Arduino output |
-
----
-
-### Step 3 — Telegram Accident Alerts
-
-Alerts fire automatically when `AccidentEventDetector` confirms an accident across **3 consecutive frames** with confidence ≥ 0.7, subject to a 60-second cooldown per camera.
-
-- **Alert sent**: annotated JPEG + message to Telegram chat
-- **No `tele.json`**: alerts silently suppressed; event JPEGs still saved to `logs/events/`
-- **Event log**: `logs/events/events.jsonl` (append-only JSONL)
+| Condition | Response |
+|---|---|
+| > 25% cameras stale (> 5s no frame) | Enter SAFE MODE — hold current phase, no new serial commands |
+| `policy.predict()` raises exception | Fall back to fixed-cycle policy (30s green per phase) |
+| Serial port unavailable | Dry-run mode — all logic runs, nothing sent to Arduino |
+| `configs/tele.json` missing | Accident detection still runs; alerts silently suppressed |
 
 ---
 
-## Fail-Safe Behaviors
+### Mode C — Streamlit Dashboard
 
-| Condition | Behavior |
-|-----------|----------|
-| >25% cameras stale (>5 s) | SAFE MODE — no new actions sent to Arduino |
-| Policy `predict()` failure | Falls back to fixed 30 s green cycle |
-| Serial port unavailable | Dry-run mode — all logic runs, nothing sent |
-| `tele.json` missing | Accident detection runs; alerts suppressed |
-
----
-
-## Project Structure
-
-```
-Traffic-Guard-AI-main/
-├── src/
-│   ├── core/
-│   │   ├── system_orchestrator.py   # Production entry point
-│   │   ├── policy_loader.py         # Checkpoint loader (auto key-strip)
-│   │   └── orchestrator_v2.py       # Refactored v2 (3-thread model)
-│   ├── vision/
-│   │   ├── multi_camera.py          # 8-camera thread manager
-│   │   ├── detector.py              # YOLOv8s + ByteTrack
-│   │   ├── state_extractor.py       # Tracks → obs vector
-│   │   └── event_detector.py        # Accident detection + Telegram
-│   ├── adapters/
-│   │   └── vision_to_state.py       # DetectorSnapshot → VisionPacket
-│   ├── buffer/
-│   │   └── vision_buffer.py         # EMA temporal smoothing
-│   ├── traffic_env/
-│   │   ├── envs/multi_agent.py      # MAPPO PettingZoo env
-│   │   └── components/observations.py
-│   ├── utils/
-│   │   └── serial_bridge.py         # Arduino serial protocol
-│   └── services/
-│       └── alert_services.py        # Telegram client
-├── experiment/
-│   ├── test_ppo.py                  # Evaluate policy in SUMO
-│   ├── test_baseline.py             # Fixed-time baseline
-│   └── compare_traffic_metrics.py
-├── sumo_configs/
-│   ├── training/
-│   └── evaluating/
-├── configs/
-├── models/
-├── train_ppo.py
-└── requirements.txt
+```bash
+streamlit run scripts/dashboard.py
 ```
 
+Open [http://localhost:8501](http://localhost:8501) in your browser.
+
+The dashboard provides three pages:
+
+| Page | Description |
+|---|---|
+| **Camera Dashboard** | 8 live feeds with scaled YOLO bounding boxes, 3-colour TLS SVG, per-intersection vehicle type counts, Arduino control panel |
+| **Live Simulation** | Run MAPPO / Max Pressure / SOTL / Fixed-Time inside SUMO with real-time queue, speed, throughput charts |
+| **Training Curves** | Load and visualize reward, loss, entropy from training CSV logs with smoothing slider |
+
+**Connecting Arduino from the Dashboard:**
+
+1. Open **Camera Dashboard** in the sidebar
+2. Under **Arduino Controller** → select your COM port (auto-detected via `serial.tools.list_ports`)
+3. Click **Connect** — status badge turns 🟢
+4. Click **Play Cameras** — RYG packets (`<S0,...,S7>\n`) are sent on every phase change + 1-second heartbeat
+
 ---
 
-## Running Tests
+### Mode D — Run Tests
 
 ```bash
 pytest                                      # all tests
-pytest tests/test_state_consistency.py     # single file
-pytest -m "not slow and not serial"        # exclude hardware tests
+pytest tests/test_state_consistency.py     # observation vector consistency
+pytest -m unit                              # unit tests only
+pytest -m "not slow and not serial"         # exclude hardware-dependent tests
 ```
-
-Test markers: `unit`, `integration`, `slow`, `serial`, `state`, `visualization`
 
 ---
 
-## Serial Protocol (Arduino)
+## ⚙️ Configuration
 
-8 integers sent per control cycle:
+All hyperparameters are centralized in `src/traffic_env/config.py`. No magic numbers scattered across files.
 
+### Adjust Reward Weights
+
+```python
+from src.traffic_env.config import RewardConfig
+
+# Recommended weights for vision deployment
+# (disable noisy speed signal, reduce throughput weight)
+vision_config = RewardConfig(weights={
+    "queue":              -1.0,
+    "pressure":           -0.5,
+    "throughput":         +0.5,   # reduced: proxy less reliable than SUMO
+    "switch_penalty":     -0.1,
+    "low_speed_penalty":   0.0,   # disabled: pixel-displacement too noisy
+    "waiting_time":       -0.3,
+})
 ```
-[tls_0_dir0, tls_0_dir1, tls_0_dir2, tls_0_dir3,
- tls_1_dir0, tls_1_dir1, tls_1_dir2, tls_1_dir3]
+
+### Adjust Simulation Parameters
+
+```python
+from src.traffic_env.config import build_default_config
+
+cfg = build_default_config(
+    sumo_cfg_path  = "sumo_configs/training/sumo_config.sumocfg",
+    step_length    = 5,      # seconds per simulation step
+    max_steps      = 1080,   # episode length (~90 min simulated)
+    min_green_time = 10,     # minimum green phase (seconds)
+    max_green_time = 60,     # maximum green phase (seconds)
+    yellow_time    = 3,      # yellow transition (seconds)
+    queue_cap      = 50.0,   # normalization cap for queue length
+    speed_cap      = 15.0,   # normalization cap for speed (m/s)
+)
 ```
 
-- **Phase 0** → dirs 0,1 get green time; dirs 2,3 = 0
-- **Phase 1** → dirs 2,3 get green time; dirs 0,1 = 0
-- Minimum green time: **5 s** | Default cycle: **60 s**
+### Key Configuration Files
+
+| File | Purpose |
+|---|---|
+| `configs/state_config.json` | Obs schema, lane ROI polygons, TLS ID mapping, normalization caps |
+| `configs/camera_config.json` | 8 cameras: source paths, directions, phase groups, TLS assignment |
+| `configs/serial.json` | Arduino port, baud rate, yellow duration, red gap |
+| `configs/tele.json` | Telegram bot token + chat ID *(gitignored — copy from `tele_example.json`)* |
+| `src/traffic_env/config.py` | All training hyperparameters (single source of truth) |
 
 ---
 
-## License
+## 📁 Project Structure
 
-MIT
+```
+Sim2Real-MAPPO-Traffic/
+├── configs/                         # Runtime configuration files
+│   ├── state_config.json            # Observation schema & ROI polygons
+│   ├── camera_config.json           # 8-camera topology
+│   └── tele_example.json            # Telegram alert template
+├── src/
+│   ├── core/
+│   │   ├── system_orchestrator.py   # Primary production entry point
+│   │   ├── orchestrator_v2.py       # 3-thread refactored orchestrator
+│   │   └── policy_loader.py         # Robust checkpoint loader
+│   ├── vision/
+│   │   ├── state_extractor.py       # Detections → observation vector
+│   │   ├── multi_camera.py          # 8-thread camera manager
+│   │   ├── detector.py              # YOLOv8 + ByteTrack worker
+│   │   └── event_detector.py        # Accident confirmation + alert
+│   ├── traffic_env/
+│   │   ├── config.py                # All hyperparameters (single source)
+│   │   ├── envs/multi_agent.py      # PettingZoo-style MAPPO environment
+│   │   └── components/
+│   │       ├── observations.py      # SUMO obs builder + vision adapter
+│   │       └── rewards.py           # PRESSLIGHT reward calculator
+│   ├── adapters/vision_to_state.py  # Bridge: snapshot → obs packet
+│   ├── buffer/vision_buffer.py      # EMA temporal smoothing
+│   └── utils/serial_bridge.py       # Arduino serial communication
+├── scripts/
+│   └── dashboard.py                 # Streamlit real-time dashboard
+├── experiment/
+│   ├── test_ppo.py                  # MAPPO training + evaluation entry point
+│   └── baselines/                   # Max Pressure, SOTL, Fixed-Time
+├── models/
+│   ├── yolo/best.pt                 # Custom YOLOv8s (5-class)
+│   └── mappo/                       # MAPPO checkpoints by timestamp
+├── docs/
+│   └── reward.md                    # Reward function design reference
+├── tests/                           # pytest test suite
+└── sumo_configs/                    # SUMO network & route files
+    ├── training/
+    └── evaluation/
+```
+
+---
+
+## 📊 Results
+
+> Evaluation on a 2-intersection SUMO network, medium traffic scenario, 10 episodes, seed 42.
+
+| Metric | Fixed-Time | Max Pressure | SOTL | **MAPPO (ours)** |
+|---|---|---|---|---|
+| Mean Queue (veh) | 12.4 | 8.7 | 9.1 | **6.3** |
+| Mean Waiting (s) | 48.2 | 31.5 | 34.8 | **22.7** |
+| Throughput (veh) | 843 | 971 | 958 | **1,104** |
+| Mean Speed (m/s) | 4.1 | 5.8 | 5.5 | **7.2** |
+
+---
+
+## 📚 References & Acknowledgments
+
+**[1] PressLight**
+> Hua Wei, Guanjie Zheng, Vikash Gayah, Zhenhui Li.
+> *PressLight: Learning Max Pressure Control to Coordinate Traffic Signals in Arterial Network.*
+> **KDD 2019.** https://doi.org/10.1145/3292500.3330949
+
+**[2] CoLight**
+> Hua Wei, Nan Xu, Huichu Zhang, Guanjie Zheng, Xinshi Zang, Chacha Chen, Weinan Zhang, Yanmin Zhu, Kai Xu, Zhenhui Li.
+> *CoLight: Learning Network-level Cooperation for Traffic Signal Control.*
+> **CIKM 2019.** https://doi.org/10.1145/3357384.3357902
+
+**[3] MAPPO**
+> Chao Yu, Akash Velu, Eugene Vinitsky, Jiaxuan Gao, Yu Wang, Alexandre Bayen, Yi Wu.
+> *The Surprising Effectiveness of PPO in Cooperative Multi-Agent Games.*
+> **NeurIPS 2022.** https://arxiv.org/abs/2103.01955
+
+**[4] SUMO**
+> Pablo Alvarez Lopez, Michael Behrisch, Laura Bieker-Walz, et al.
+> *Microscopic Traffic Simulation using SUMO.*
+> **IEEE ITSC 2018.** https://doi.org/10.1109/ITSC.2018.8569938
+
+**[5] YOLOv8**
+> Glenn Jocher, Ayush Chaurasia, Jing Qiu.
+> *Ultralytics YOLOv8.* 2023.
+> https://github.com/ultralytics/ultralytics
+
+**[6] ByteTrack**
+> Yifu Zhang, Peize Sun, Yi Jiang, et al.
+> *ByteTrack: Multi-Object Tracking by Associating Every Detection Box.*
+> **ECCV 2022.** https://arxiv.org/abs/2110.06864
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License** — see the [LICENSE](LICENSE) file for details.
+
+---
+
+<div align="center">
+
+Made with ❤️ for smarter cities
+
+⭐ **Star this repo if you find it useful!**
+
+</div>
