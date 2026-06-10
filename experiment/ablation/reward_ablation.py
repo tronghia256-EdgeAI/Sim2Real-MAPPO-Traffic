@@ -11,7 +11,6 @@ Usage (from project root):
     python experiment/ablation/reward_ablation.py \\
         --checkpoint models/mappo/20260418_215140/best_model.pt \\
         --sumo-cfg   sumo_configs/evaluation/medium/sumo_config.sumocfg \\
-        --episodes   5 \\
         --seeds      42 123 456
 """
 
@@ -19,10 +18,11 @@ from __future__ import annotations
 
 import argparse
 import csv
+import dataclasses
 import sys
 from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Dict, List, Sequence, Tuple
+from typing import Dict, List, Tuple
 
 import numpy as np
 import torch
@@ -31,9 +31,9 @@ _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 
-from src.traffic_env.config import RewardConfig, build_default_config
+from src.traffic_env.config import RewardConfig, TrafficEnvConfig, build_default_config
 from src.traffic_env.envs.multi_agent import MappoTrafficEnv
-from src.core.policy_loader import PolicyLoader
+from experiment.runners.train_ppo import Actor, RunningMeanStd
 
 
 # ---------------------------------------------------------------------------
@@ -112,26 +112,8 @@ ABLATION_CONFIGS: List[AblationConfig] = [
 
 
 # ---------------------------------------------------------------------------
-# Evaluation helpers (copied from train_ppo.py to avoid circular imports)
+# Episode runner
 # ---------------------------------------------------------------------------
-
-class RunningMeanStd:
-    def __init__(self, shape: tuple) -> None:
-        self.mean = np.zeros(shape, dtype=np.float64)
-        self.var = np.ones(shape, dtype=np.float64)
-        self.count = 1e-4
-
-    def normalize(self, x: np.ndarray) -> np.ndarray:
-        return np.clip(
-            (x - self.mean.astype(np.float32)) / (np.sqrt(self.var).astype(np.float32) + 1e-8),
-            -10.0, 10.0,
-        ).astype(np.float32)
-
-    def load_state_dict(self, d: dict) -> None:
-        self.mean = np.array(d["mean"], dtype=np.float64)
-        self.var = np.array(d["var"], dtype=np.float64)
-        self.count = float(d["count"])
-
 
 @dataclass
 class EpisodeResult:
@@ -152,7 +134,7 @@ def _run_episode(
     max_steps: int,
     device: torch.device,
 ) -> Tuple[float, int, float, float]:
-    obs_dict, info = env.reset(seed=seed)
+    obs_dict, _ = env.reset(seed=seed)
     total_reward = 0.0
     steps = 0
     throughput = 0.0
@@ -211,12 +193,14 @@ def run_ablation(args: argparse.Namespace) -> None:
         print(f"{'='*60}")
 
         reward_cfg = RewardConfig(weights=ablation.weights)
-        env_cfg = build_default_config(
+        base_cfg: TrafficEnvConfig = build_default_config(
             sumo_cfg_path=args.sumo_cfg,
             gui=False,
             max_steps=args.max_steps,
         )
-        env_cfg = env_cfg._replace(reward_config=reward_cfg) if hasattr(env_cfg, "_replace") else env_cfg
+        # TrafficEnvConfig is a dataclass — use dataclasses.replace() to swap the
+        # reward sub-config without mutating the original.
+        env_cfg: TrafficEnvConfig = dataclasses.replace(base_cfg, reward=reward_cfg)
 
         env = MappoTrafficEnv(
             config=env_cfg,
@@ -233,7 +217,6 @@ def run_ablation(args: argparse.Namespace) -> None:
             obs_dim = env_cfg.local_obs_dim
             action_dim = getattr(env, "action_dim", 2)
 
-            from experiment.runners.train_ppo import Actor
             actor = Actor(obs_dim, action_dim).to(device)
             actor.load_state_dict(ckpt["actor_state_dict"])
             actor.eval()

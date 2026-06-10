@@ -87,8 +87,9 @@ sumo_configs/evaluation/*/summary*.xml
 # Ablation & experiment outputs
 # =============================================================================
 results/paper1_mappo/ablation/
-results/paper2_vision/
-results/paper3_sim2real/
+results/paper2_vision/*
+results/paper3_sim2real/*
+results/figures/
 
 # =============================================================================
 # Jupyter notebook checkpoints
