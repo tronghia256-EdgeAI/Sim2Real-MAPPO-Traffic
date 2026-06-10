@@ -5,8 +5,8 @@
 ### Multi-Agent Deep Reinforcement Learning for Intelligent Traffic Signal Control
 #### *Bridging the Simulation-to-Reality Gap with Vision-Based State & Reward Proxies*
 
-[![Stars](https://img.shields.io/github/stars/YOUR_USERNAME/Sim2Real-MAPPO-Traffic?style=for-the-badge&logo=github&color=f59e0b)](https://github.com/YOUR_USERNAME/Sim2Real-MAPPO-Traffic/stargazers)
-[![Forks](https://img.shields.io/github/forks/YOUR_USERNAME/Sim2Real-MAPPO-Traffic?style=for-the-badge&logo=github&color=6366f1)](https://github.com/YOUR_USERNAME/Sim2Real-MAPPO-Traffic/network/members)
+[![Stars](https://img.shields.io/github/stars/tronghia256-EdgeAI/Sim2Real-MAPPO-Traffic?style=for-the-badge&logo=github&color=f59e0b)](https://github.com/tronghia256-EdgeAI/Sim2Real-MAPPO-Traffic/stargazers)
+[![Forks](https://img.shields.io/github/forks/tronghia256-EdgeAI/Sim2Real-MAPPO-Traffic?style=for-the-badge&logo=github&color=6366f1)](https://github.com/tronghia256-EdgeAI/Sim2Real-MAPPO-Traffic/network/members)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3b82f6?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![SUMO](https://img.shields.io/badge/SUMO-1.18%2B-f97316?style=for-the-badge)](https://sumo.dlr.de/)
@@ -184,7 +184,7 @@ DEFAULT_REWARD_WEIGHTS = {
 ### 1. Clone the Repository
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/Sim2Real-MAPPO-Traffic.git
+git clone https://github.com/tronghia256-EdgeAI/Sim2Real-MAPPO-Traffic.git
 cd Sim2Real-MAPPO-Traffic
 ```
 
@@ -231,7 +231,26 @@ source .venv/bin/activate
 pip install -r requirements.txt
 ```
 
-### 5. Configure Telegram Alerts *(optional)*
+### 5. Prepare Dataset *(for YOLO retraining only)*
+
+The YOLOv11 model (`models/yolo/yolov11.pt`) is already trained and included. To **retrain** the detector with your own data:
+
+```
+data/
+├── dataset/         ← place your YOLO-format dataset here
+│   ├── images/
+│   │   ├── train/
+│   │   └── val/
+│   └── labels/
+│       ├── train/
+│       └── val/
+└── raw_video/       ← 8 camera test videos (included)
+```
+
+Classes must match the custom model: `0=accident  1=bus  2=car  3=motorcycle  4=truck`.
+The `data/dataset/` directory is gitignored — add your images locally or mount a shared drive.
+
+### 6. Configure Telegram Alerts *(optional)*
 
 ```bash
 cp configs/tele_example.json configs/tele.json
@@ -246,22 +265,34 @@ cp configs/tele_example.json configs/tele.json
 
 ```bash
 # Train with default hyperparameters
-python experiment/test_ppo.py
+python experiment/runners/train_ppo.py \
+  --sumo-cfg sumo_configs/training/sumo_config.sumocfg
 
-# Evaluate a saved checkpoint
-python experiment/test_ppo.py \
-  --checkpoint models/mappo/20260418_215140/best_model.pt \
-  --episodes 10 \
-  --gui          # open SUMO GUI for visualization
+# Multi-seed evaluation of a saved checkpoint
+python experiment/runners/train_ppo.py \
+  --mode multiseed_eval \
+  --sumo-cfg   sumo_configs/evaluation/medium/sumo_config.sumocfg \
+  --checkpoint models/mappo/20260418_215140/best_model.pt
+
+# Evaluate with SUMO GUI (visual inspection)
+python experiment/runners/test_ppo.py
 ```
 
-Training logs are written to `logs/rl/<run_name>/`:
+Training logs are written to `logs/rl/<run_id>/`:
 
 | File | Contents |
 |---|---|
 | `train_episodes.csv` | Per-episode reward, throughput, queue, waiting |
 | `train_updates.csv` | Policy loss, value loss, entropy per PPO update |
+| `run_config.json` | Full hyperparameter snapshot for reproducibility |
 | `best_model.pt` | Best checkpoint by mean episode reward |
+
+To generate evaluation scenarios (low / high / asymmetric traffic):
+
+```bash
+# Requires SUMO_HOME set and SUMO tools on PATH
+python scripts/generate_sumo_scenarios.py
+```
 
 ---
 
@@ -396,7 +427,7 @@ Sim2Real-MAPPO-Traffic/
 │   ├── vision/
 │   │   ├── state_extractor.py       # Detections → observation vector
 │   │   ├── multi_camera.py          # 8-thread camera manager
-│   │   ├── detector.py              # YOLOv8 + ByteTrack worker
+│   │   ├── detector.py              # YOLOv11 + ByteTrack worker
 │   │   └── event_detector.py        # Accident confirmation + alert
 │   ├── traffic_env/
 │   │   ├── config.py                # All hyperparameters (single source)
@@ -407,20 +438,68 @@ Sim2Real-MAPPO-Traffic/
 │   ├── adapters/vision_to_state.py  # Bridge: snapshot → obs packet
 │   ├── buffer/vision_buffer.py      # EMA temporal smoothing
 │   └── utils/serial_bridge.py       # Arduino serial communication
-├── scripts/
-│   └── dashboard.py                 # Streamlit real-time dashboard
 ├── experiment/
-│   ├── test_ppo.py                  # MAPPO training + evaluation entry point
-│   └── baselines/                   # Max Pressure, SOTL, Fixed-Time
+│   ├── runners/
+│   │   ├── train_ppo.py             # MAPPO training entry point
+│   │   ├── test_ppo.py              # Policy evaluation with SUMO GUI
+│   │   ├── evaluate.py              # Headless multi-seed evaluation
+│   │   └── compare_traffic_metrics.py  # Baseline vs MAPPO comparison
+│   ├── baselines/
+│   │   ├── max_pressure.py          # Max Pressure controller
+│   │   └── sotl.py                  # Self-Organising Traffic Lights
+│   ├── ablation/
+│   │   └── reward_ablation.py       # Reward component ablation study
+│   └── plots/
+│       ├── generate_paper_figures.py   # IEEE-ready PDF figures
+│       ├── plot_training_results.py
+│       └── parse_tripinfo.py
+├── scripts/
+│   ├── dashboard.py                 # Streamlit real-time dashboard
+│   ├── generate_sumo_scenarios.py   # Generate low/high/asymmetric scenarios
+│   ├── check_obs_match.py           # Verify obs vector consistency
+│   └── run_real_deployment.py       # Convenience deployment launcher
+├── notebooks/
+│   └── 01_training_analysis.ipynb   # Training curves & baseline comparison
+├── results/
+│   ├── paper1_mappo/
+│   │   ├── eval_tables/             # metrics_comparison.csv
+│   │   └── training_curves/         # TensorBoard screenshots
+│   ├── paper2_vision/               # Vision pipeline results (future)
+│   └── paper3_sim2real/             # Sim-to-real gap analysis (future)
+├── figures/                         # Publication-ready PDF figures (LaTeX)
+│   ├── training_curve.pdf           # Fig: reward convergence
+│   ├── training_losses.pdf          # Fig: policy/value loss
+│   └── reward_distribution.pdf      # Fig: early vs late reward distribution
 ├── models/
 │   ├── yolo/yolov11.pt              # Custom YOLOv11n-seg (5-class)
-│   └── mappo/                       # MAPPO checkpoints by timestamp
+│   └── mappo/<run_id>/
+│       ├── best_model.pt            # Best checkpoint by mean reward
+│       └── run_config.json          # Hyperparameter snapshot
+├── data/
+│   ├── raw_video/                   # 8 camera test videos
+│   ├── dataset/                     # YOLO training dataset (gitignored)
+│   └── processed/                   # Processed data (gitignored)
 ├── docs/
-│   └── reward.md                    # Reward function design reference
+│   ├── state.md                     # Observation vector design
+│   ├── reward.md                    # Reward function design
+│   └── architecture_diagram.png     # System architecture
+├── hardware/
+│   ├── mega_controller/
+│   │   └── mega_controller.ino      # Arduino traffic light firmware
+│   └── schematic_traffic_system.png
+├── sumo_configs/
+│   ├── training/                    # Training network & routes
+│   └── evaluation/
+│       ├── medium/                  # Medium traffic (default)
+│       ├── low/                     # Light traffic scenario
+│       ├── high/                    # Heavy traffic scenario
+│       └── asymmetric/              # Asymmetric flow scenario
 ├── tests/                           # pytest test suite
-└── sumo_configs/                    # SUMO network & route files
-    ├── training/
-    └── evaluation/
+├── logs/                            # Runtime logs (gitignored)
+├── requirements.txt                 # Python dependencies
+├── pytest.ini                       # Test markers & config
+├── LICENSE                          # MIT License
+└── README.md
 ```
 
 ---
@@ -435,6 +514,50 @@ Sim2Real-MAPPO-Traffic/
 | Mean Waiting (s) | 48.2 | 31.5 | 34.8 | **22.7** |
 | Throughput (veh) | 843 | 971 | 958 | **1,104** |
 | Mean Speed (m/s) | 4.1 | 5.8 | 5.5 | **7.2** |
+
+---
+
+## 📐 Reproducibility
+
+All experiments use a fixed seed (`--seed 42`). Key hyperparameters are snapshotted in `run_config.json` inside each checkpoint directory. To reproduce the main results:
+
+```bash
+# 1. Generate evaluation scenarios
+python scripts/generate_sumo_scenarios.py
+
+# 2. Multi-seed evaluation (5 seeds, reports mean ± std)
+python experiment/runners/train_ppo.py \
+  --mode multiseed_eval \
+  --sumo-cfg   sumo_configs/evaluation/medium/sumo_config.sumocfg \
+  --checkpoint models/mappo/20260418_215140/best_model.pt
+
+# 3. Reward component ablation
+python experiment/ablation/reward_ablation.py \
+  --checkpoint models/mappo/20260418_215140/best_model.pt \
+  --sumo-cfg   sumo_configs/evaluation/medium/sumo_config.sumocfg
+
+# 4. Regenerate paper figures
+python experiment/plots/generate_paper_figures.py
+```
+
+---
+
+## 🔖 Citation
+
+If you use this work in your research, please cite:
+
+```bibtex
+@software{traffic_guard_ai_2026,
+  author    = {Nguyen, Trong Hia},
+  title     = {{Traffic Guard AI: Sim2Real Multi-Agent Traffic Signal Control}},
+  year      = {2026},
+  publisher = {GitHub},
+  url       = {https://github.com/tronghia256-EdgeAI/Sim2Real-MAPPO-Traffic},
+  license   = {MIT}
+}
+```
+
+See [`CITATION.cff`](CITATION.cff) for full citation metadata.
 
 ---
 

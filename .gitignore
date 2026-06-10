@@ -74,6 +74,29 @@ logs/performance.log
 configs/tele.json
 
 # =============================================================================
+# SUMO evaluation — generated route files (large, regenerate via script)
+# =============================================================================
+sumo_configs/evaluation/*/trips.trips.xml
+sumo_configs/evaluation/*/traffic_test.rou.xml
+sumo_configs/evaluation/*/traffic_test.rou.alt.xml
+sumo_configs/evaluation/*/tripinfo*.xml
+sumo_configs/evaluation/*/summary*.xml
+*.rou.alt.xml
+
+# =============================================================================
+# Ablation & experiment outputs
+# =============================================================================
+results/paper1_mappo/ablation/
+results/paper2_vision/
+results/paper3_sim2real/
+
+# =============================================================================
+# Jupyter notebook checkpoints
+# =============================================================================
+notebooks/.ipynb_checkpoints/
+.ipynb_checkpoints/
+
+# =============================================================================
 # Tool-specific (not part of the project)
 # =============================================================================
 .aiignore

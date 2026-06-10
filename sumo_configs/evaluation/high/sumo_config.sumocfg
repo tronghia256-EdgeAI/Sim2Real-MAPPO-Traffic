@@ -1,0 +1,26 @@
+<configuration>
+    <input>
+        <net-file value="intersections.net.xml"/>
+        <route-files value="traffic_test.rou.xml"/>
+        <additional-files value="vtypes.add.xml"/>
+    </input>
+
+    <time>
+        <begin value="0"/>
+        <end value="5400"/>
+    </time>
+
+    <processing>
+        <time-to-teleport value="-1"/>
+        <lateral-resolution value="0.4"/>
+    </processing>
+
+    <output>
+        <tripinfo-output value="tripinfo.xml"/>
+        <summary-output value="summary.xml"/>
+    </output>
+
+    <routing>
+        <device.emissions.probability value="1.0"/>
+    </routing>
+</configuration>
