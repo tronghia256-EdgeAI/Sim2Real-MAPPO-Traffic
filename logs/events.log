@@ -1,0 +1,21 @@
+{"event": "fallback", "reason": "see_events_log", "consecutive": 1, "timestamp": 1781074616.915272}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 2, "timestamp": 1781074617.982278}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 3, "timestamp": 1781074618.6708703}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 4, "timestamp": 1781074619.172611}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 5, "timestamp": 1781074619.6729672}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 6, "timestamp": 1781074620.1737163}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 7, "timestamp": 1781074620.6743195}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 1, "timestamp": 1781074735.686177}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 2, "timestamp": 1781074736.1827629}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 1, "timestamp": 1781074741.699602}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 2, "timestamp": 1781074742.1986985}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 3, "timestamp": 1781074742.69945}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 4, "timestamp": 1781074743.2029958}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 5, "timestamp": 1781074743.704424}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 6, "timestamp": 1781074744.206034}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 7, "timestamp": 1781074744.7068927}
+{"event": "accident", "cam_id": "cam_3", "confidence": 0.9205639958381653, "timestamp": 1781074867.0038183, "severity": "high"}
+{"event": "accident", "cam_id": "cam_4", "confidence": 0.798397958278656, "timestamp": 1781074868.2627904, "severity": "low"}
+{"event": "fallback", "reason": "see_events_log", "consecutive": 1, "timestamp": 1781075434.7155294}
+{"event": "accident", "cam_id": "cam_4", "confidence": 0.7069717645645142, "timestamp": 1781075439.0508263, "severity": "low"}
+{"event": "accident", "cam_id": "cam_3", "confidence": 0.930729329586029, "timestamp": 1781075440.316174, "severity": "high"}
