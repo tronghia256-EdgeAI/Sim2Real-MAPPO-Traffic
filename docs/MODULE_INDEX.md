@@ -265,7 +265,6 @@ Convenience entry-point launchers. Thin wrappers — no business logic.
 
 | File | Description | Paper |
 |------|-------------|-------|
-| `run_orchestrator.py` | One-liner launcher that calls `src.core.system_orchestrator.main()` for the production pipeline. | 3 |
 | `run_smoke_test.py` | Smoke test launcher: initialises `MappoTrafficEnv`, resets, takes one step, and prints obs/reward keys to confirm the SUMO+Python stack is working. | 1 |
 
 ---

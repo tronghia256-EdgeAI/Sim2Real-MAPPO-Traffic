@@ -193,10 +193,10 @@ def _tls_states_to_serial(tls_state: Dict[str, Dict]) -> List[int]:
 # Cached resources
 # =============================================================================
 
-@st.cache_resource(show_spinner="Loading YOLO model...")
+@st.cache_resource(show_spinner="Loading YOLO model (OpenVINO)...")
 def _load_yolo(model_path: str):
-    from ultralytics import YOLO
-    return YOLO(model_path)
+    from src.vision.detector import _load_yolo as _ov_load
+    return _ov_load(model_path, use_openvino=True)
 
 
 @st.cache_resource(show_spinner="Loading MAPPO policy...")
@@ -307,14 +307,27 @@ def _boxes_to_tracks(
     cam_idx: int,
     conf_thresh: float,
     timestamp: float,
+    src_w: int = 320,
+    src_h: int = 240,
+    dst_w: int = 1280,
+    dst_h: int = 720,
 ) -> List[Dict[str, Any]]:
-    """Convert ultralytics Boxes to track dicts expected by StateExtractor."""
+    """Convert ultralytics Boxes to track dicts expected by StateExtractor.
+
+    Scales bbox coordinates from the YOLO inference resolution (src) back to
+    the original camera resolution (dst) so that ROI polygons in state_config.json
+    (defined at dst resolution) correctly assign vehicles to lanes.
+    """
+    sx = dst_w / src_w
+    sy = dst_h / src_h
     tracks: List[Dict[str, Any]] = []
     for i, box in enumerate(boxes):
         if float(box.conf[0].item()) < conf_thresh:
             continue
         cls_id = int(box.cls[0].item())
         x1, y1, x2, y2 = map(float, box.xyxy[0].tolist())
+        x1, x2 = x1 * sx, x2 * sx
+        y1, y2 = y1 * sy, y2 * sy
         tracks.append({
             "track_id":   i,
             "cls_id":     cls_id,
@@ -658,6 +671,23 @@ def show_camera_dashboard(
         if not cap.isOpened():
             st.warning(f"Cannot open `{src}` — slot will show placeholder.")
 
+    # ── accident event detector (Telegram alerts + image save) ───────────────
+    try:
+        from src.vision.event_detector import AccidentEventDetector
+        _accident_detector = AccidentEventDetector(
+            tele_config_path=str(_ROOT / "configs" / "tele.json"),
+            accident_class_id=0,
+            accident_conf_thresh=0.7,
+            confirm_frames=3,
+            cooldown_sec=60.0,
+            position="INTERSECTION_DASHBOARD",
+            enabled=True,
+            event_dir=str(_ROOT / "logs" / "events"),
+        )
+    except Exception as _e:
+        st.warning(f"AccidentEventDetector init failed: {_e}")
+        _accident_detector = None
+
     # ── UI layout ─────────────────────────────────────────────────────────────
     st.markdown("### Camera Feed")
 
@@ -707,7 +737,7 @@ def show_camera_dashboard(
 
     # ── TLS state ─────────────────────────────────────────────────────────────
     YELLOW_DURATION_S = 3.0    # exactly 3 real seconds of yellow, regardless of fps
-    MIN_GREEN_S       = 8.0    # minimum green hold before any switch is allowed
+    MIN_GREEN_S       = 10.0   # minimum green hold before any switch is allowed (matches training)
     _phase_hold_s     = 15.0   # simulated: force switch after 15 real seconds
     _mappo_max_s      = 30.0   # MAPPO safety: force switch if stuck > 30 real seconds
 
@@ -762,7 +792,11 @@ def show_camera_dashboard(
                 annotated, accident_in_cam = _draw_boxes(
                     frame_sm, results[0].boxes, conf_thresh, cam_counts
                 )
-                tracks = _boxes_to_tracks(results[0].boxes, cam_idx, conf_thresh, t_start)
+                orig_h, orig_w = frame.shape[:2]
+                tracks = _boxes_to_tracks(
+                    results[0].boxes, cam_idx, conf_thresh, t_start,
+                    src_w=320, src_h=240, dst_w=orig_w, dst_h=orig_h,
+                )
                 for cls_id, cnt in cam_counts.items():
                     global_counts[cls_id] = global_counts.get(cls_id, 0) + cnt
             else:
@@ -778,12 +812,32 @@ def show_camera_dashboard(
 
             annotated_frames[cam_idx] = annotated
             cam_accident_flags.append(accident_in_cam)
+
+            # Find best accident confidence from boxes
+            _acc_conf = 0.0
+            if use_yolo and yolo is not None and accident_in_cam:
+                for _box in results[0].boxes:
+                    if int(_box.cls[0].item()) == 0:
+                        _acc_conf = max(_acc_conf, float(_box.conf[0].item()))
+
             parsed_frames[cam_idx] = {
-                "tracks":        tracks,
+                "tracks":         tracks,
                 "accident_found": accident_in_cam,
-                "cam_id":        cam_idx,
-                "timestamp":     t_start,
+                "accident_conf":  _acc_conf,
+                "cam_id":         cam_idx,
+                "name":           cam.get("id", str(cam_idx)),
+                "timestamp":      t_start,
+                "frame_count":    frame_idx,
+                "vehicle_count":  sum(c for k, c in cam_counts.items() if k != 0),
+                "annotated_frame": annotated if accident_in_cam else None,
             }
+
+        # ── accident Telegram alert (3-frame confirm + image) ────────────────
+        if _accident_detector is not None:
+            try:
+                _accident_detector.update(parsed_frames)
+            except Exception:
+                pass
 
         # ── commit yellow transitions (time-based, not frame-based) ─────────
         _now = time.perf_counter()
@@ -799,6 +853,7 @@ def show_camera_dashboard(
         # ── Layer 1: pressure from raw vehicle counts (works even with bad ROIs) ─
         # phase_group A → phase 0 (N+S); phase_group B → phase 1 (E+W)
         pressure_preferred: Dict[str, int] = {}
+        pressure_counts: Dict[str, Tuple[int, int]] = {}   # {tls_id: (cnt_a, cnt_b)}
         for tls_id, groups in tls_phase_groups.items():
             cnt_a = sum(
                 sum(1 for t in parsed_frames.get(ci, {}).get("tracks", [])
@@ -811,8 +866,12 @@ def show_camera_dashboard(
                 for ci in groups.get("B", [])
             )
             pressure_preferred[tls_id] = 0 if cnt_a >= cnt_b else 1
+            pressure_counts[tls_id] = (cnt_a, cnt_b)
 
         # ── Layer 2: MAPPO inference (optional, early-switch hint) ────────────
+        # Pressure veto: MAPPO cannot switch away from the busy direction
+        # if current side has >= PRESSURE_VETO_RATIO × the other side's count.
+        PRESSURE_VETO_RATIO = 2.0
         if use_mappo and policy is not None and state_extractor is not None:
             phase_map = {
                 tid: _PHASE_ACTION_MAP[ts["phase"]]
@@ -831,11 +890,20 @@ def show_camera_dashboard(
                 for tid, new_act in actions.items():
                     ts = tls_state[tid]
                     green_held = _now - ts["phase_start"]
-                    if (ts["yellow_start"] is None
-                            and new_act != ts["phase"]
-                            and green_held >= MIN_GREEN_S):
-                        ts["next_phase"]   = new_act
-                        ts["yellow_start"] = time.perf_counter()
+                    if new_act == ts["phase"] or ts["yellow_start"] is not None:
+                        continue
+                    if green_held < MIN_GREEN_S:
+                        continue
+                    # Pressure veto: block switch if current phase is the busy side
+                    cnt_a, cnt_b = pressure_counts.get(tid, (0, 0))
+                    cnt_current = cnt_a if ts["phase"] == 0 else cnt_b
+                    cnt_other   = cnt_b if ts["phase"] == 0 else cnt_a
+                    if cnt_other > 0 and cnt_current >= PRESSURE_VETO_RATIO * cnt_other:
+                        continue   # MAPPO vetoed — busy side keeps green
+                    if cnt_current > 0 and cnt_other == 0:
+                        continue   # other side is empty — never switch
+                    ts["next_phase"]   = new_act
+                    ts["yellow_start"] = time.perf_counter()
             except Exception:
                 pass
 
@@ -1269,7 +1337,7 @@ with st.sidebar:
         )
         yolo_model_path = st.text_input(
             "YOLO Model",
-            str(_ROOT / "models" / "yolo" / "best.pt"),
+            str(_ROOT / "models" / "yolo" / "yolov11.pt"),
         )
         use_yolo    = st.toggle("YOLO Detection", value=True)
         conf_thresh = st.slider("Confidence Threshold", 0.10, 0.90, 0.45, 0.05,

@@ -1,45 +1,23 @@
-"""Multi-camera detector manager for traffic vision.
+"""Multi-camera detector — CPU-optimised, single shared YOLO instance.
 
-Responsibilities:
-- Pull latest frames from MultiCameraManager.
-- Run YOLO + ByteTrack per camera independently.
-- Keep per-camera tracking state isolated so IDs do not leak across streams.
-- Expose structured outputs for downstream state extraction, alerting, and PPO.
-
-Recommended usage:
-
-    from src.vision.multi_camera import MultiCameraManager
-    from src.vision.detector import DetectorManager
-
-    cam_mgr = MultiCameraManager("configs/camera_config.json")
-    cam_mgr.start()
-
-    det_mgr = DetectorManager(
-        model_path="models/best.pt",
-        camera_manager=cam_mgr,
-        accident_class_id=0,
-        vehicle_class_ids=[1, 2, 3, 4],
-        conf_thresh=0.5,
-        accident_conf_thresh=0.7,
-        tracker_yaml="bytetrack.yaml",
-    )
-    det_mgr.start()
-
-    while True:
-        snapshot = det_mgr.get_latest_snapshot()
-        # snapshot[cam_id] -> structured dict with tracks, counts, accident flag, etc.
-
-Press q in the preview window if you enable preview.
+Architecture
+------------
+- One YOLO model shared across all cameras (was: one per camera → 8×)
+- Cameras processed sequentially; per-camera ByteTrack state saved/restored
+- OpenVINO INT8 quantized model loaded by default (~3× faster than .pt on CPU)
+  Priority: INT8 OpenVINO → FP32 OpenVINO → .pt
+- process_single_frame() is the primary API consumed by InferenceThread
 """
 
 from __future__ import annotations
 
-import argparse
+import copy
 import json
+import logging
 import threading
 import time
-from datetime import datetime
 from dataclasses import dataclass, field
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple, Union
 
@@ -47,14 +25,74 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-from src.vision.multi_camera import MultiCameraManager, _draw_status_panel
+from src.vision.multi_camera import MultiCameraManager
 from src.vision.tracker_parser import ParsedFrame, TrackRecord, TrackerParser
 
+logger = logging.getLogger(__name__)
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# OpenVINO-aware model loader
+# ─────────────────────────────────────────────────────────────────────────────
+
+def _read_ov_task(ov_dir: Path) -> str:
+    """Read task from OpenVINO metadata.yaml; fall back to 'detect'."""
+    meta = ov_dir / "metadata.yaml"
+    if meta.exists():
+        try:
+            import yaml
+            with open(meta, encoding="utf-8") as f:
+                return yaml.safe_load(f).get("task", "detect")
+        except Exception:
+            pass
+    return "detect"
+
+
+def _load_yolo(model_path: Union[str, Path], use_openvino: bool = True) -> YOLO:
+    """
+    Load YOLO, preferring OpenVINO INT8 → FP32 → .pt (in that order).
+    Exports FP32 OpenVINO on first run if neither INT8 nor FP32 exists (~30 s).
+    Falls back to .pt silently on any failure.
+    """
+    pt_path = Path(model_path)
+    if not use_openvino:
+        return YOLO(str(pt_path))
+
+    int8_dir = pt_path.parent / f"{pt_path.stem}_int8_openvino_model"
+    fp32_dir = pt_path.parent / f"{pt_path.stem}_openvino_model"
+
+    # INT8 takes priority — fastest on CPU
+    if int8_dir.exists():
+        task = _read_ov_task(int8_dir)
+        logger.info("Loading OpenVINO INT8 model from %s (task=%s)", int8_dir, task)
+        return YOLO(str(int8_dir), task=task)
+
+    # FP32 fallback
+    if not fp32_dir.exists():
+        logger.info("OpenVINO model not found — exporting %s (one-time, ~30 s)…", pt_path.name)
+        try:
+            tmp = YOLO(str(pt_path))
+            tmp.export(format="openvino", imgsz=640)
+            del tmp
+            logger.info("OpenVINO FP32 export complete → %s", fp32_dir)
+        except Exception as exc:
+            logger.warning("OpenVINO export failed (%s) — falling back to .pt", exc)
+            return YOLO(str(pt_path))
+
+    if fp32_dir.exists():
+        task = _read_ov_task(fp32_dir)
+        logger.info("Loading OpenVINO FP32 model from %s (task=%s)", fp32_dir, task)
+        return YOLO(str(fp32_dir), task=task)
+
+    return YOLO(str(pt_path))
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Data container
+# ─────────────────────────────────────────────────────────────────────────────
 
 @dataclass
 class CameraDetectionState:
-    """Latest structured detection state for one camera."""
-
     cam_id: Union[int, str]
     name: str
     timestamp: float = 0.0
@@ -68,223 +106,24 @@ class CameraDetectionState:
     last_error: Optional[str] = None
 
 
-class _CameraDetectorWorker:
-    """Per-camera inference worker with its own YOLO instance and tracking state."""
-
-    def __init__(
-        self,
-        cam_id: Union[int, str],
-        camera_name: str,
-        model_path: Union[str, Path],
-        camera_manager: MultiCameraManager,
-        conf_thresh: float = 0.5,
-        accident_conf_thresh: float = 0.7,
-        accident_class_id: int = 0,
-        vehicle_class_ids: Optional[List[int]] = None,
-        tracker_yaml: str = "bytetrack.yaml",
-        enable_preview: bool = False,
-        preview_scale: float = 1.0,
-    ) -> None:
-        self.cam_id = cam_id
-        self.camera_name = camera_name
-        self.camera_manager = camera_manager
-        self.conf_thresh = float(conf_thresh)
-        self.accident_conf_thresh = float(accident_conf_thresh)
-        self.accident_class_id = int(accident_class_id)
-        self.vehicle_class_ids = [1, 2, 3, 4] if vehicle_class_ids is None else list(vehicle_class_ids)
-        self.tracker_yaml = tracker_yaml
-        self.enable_preview = enable_preview
-        self.preview_scale = float(preview_scale)
-
-        self.model = YOLO(str(model_path))
-        self.parser = TrackerParser(
-            class_map={
-                0: "accident",
-                1: "bus",
-                2: "car",
-                3: "motorcycle",
-                4: "truck",
-            },
-            vehicle_class_ids=self.vehicle_class_ids,
-            accident_class_id=self.accident_class_id,
-            accident_conf_thresh=self.accident_conf_thresh,
-        )
-
-        self.thread: Optional[threading.Thread] = None
-        self.stop_event = threading.Event()
-        self.lock = threading.Lock()
-        self.latest_state = CameraDetectionState(cam_id=cam_id, name=camera_name)
-        self.is_running = False
-        self.last_processed_frame_idx = -1
-        self.max_idle_sleep = 0.01
-
-    def start(self) -> None:
-        if self.thread is not None and self.thread.is_alive():
-            return
-        self.stop_event.clear()
-        self.thread = threading.Thread(target=self._loop, name=f"det-{self.cam_id}", daemon=True)
-        self.thread.start()
-        self.is_running = True
-
-    def stop(self) -> None:
-        self.stop_event.set()
-        if self.thread is not None and self.thread.is_alive():
-            self.thread.join(timeout=2.0)
-        self.is_running = False
-
-    @staticmethod
-    def _make_color(track_id: Optional[int], cls_id: int, accident_class_id: int, vehicle_class_ids: List[int]) -> Tuple[int, int, int]:
-        if cls_id == accident_class_id:
-            return (0, 0, 255)
-        if cls_id in vehicle_class_ids:
-            if track_id is not None and track_id >= 0:
-                return (
-                    int((track_id * 37) % 255),
-                    int((track_id * 17) % 255),
-                    int((track_id * 29) % 255),
-                )
-            return (255, 0, 0)
-        return (200, 200, 200)
-
-    def _annotate(self, frame: np.ndarray, parsed: ParsedFrame) -> np.ndarray:
-        canvas = frame.copy()
-
-        for track in parsed.tracks:
-            x1, y1, x2, y2 = map(int, track.bbox)
-            color = self._make_color(track.track_id, track.cls_id, self.accident_class_id, self.vehicle_class_ids)
-
-            cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
-            label = f"{track.label} v={track.speed_px_s:.1f}px/s"
-            (w, h), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
-            cv2.rectangle(canvas, (x1, max(0, y1 - 20)), (x1 + w + 6, y1), color, -1)
-            cv2.putText(
-                canvas,
-                label,
-                (x1 + 3, max(12, y1 - 6)),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.45,
-                (255, 255, 255),
-                1,
-            )
-
-        cv2.putText(
-            canvas,
-            f"Vehicles: {parsed.vehicle_count}",
-            (10, 30),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.8,
-            (0, 255, 0),
-            2,
-        )
-        if parsed.accident_found:
-            cv2.putText(
-                canvas,
-                f"Accident: {parsed.accident_conf:.2f}",
-                (10, 60),
-                cv2.FONT_HERSHEY_SIMPLEX,
-                0.8,
-                (0, 0, 255),
-                2,
-            )
-        cv2.putText(
-            canvas,
-            datetime.fromtimestamp(parsed.timestamp).strftime("%Y-%m-%d %H:%M:%S"),
-            (10, max(canvas.shape[0] - 12, 20)),
-            cv2.FONT_HERSHEY_SIMPLEX,
-            0.55,
-            (255, 255, 0),
-            2,
-        )
-
-        if self.enable_preview and self.preview_scale != 1.0:
-            canvas = cv2.resize(
-                canvas,
-                None,
-                fx=self.preview_scale,
-                fy=self.preview_scale,
-                interpolation=cv2.INTER_AREA,
-            )
-        return canvas
-
-    def _loop(self) -> None:
-        while not self.stop_event.is_set():
-            latest = self.camera_manager.get_latest_frames(copy=False).get(self.cam_id)
-            if not latest:
-                time.sleep(self.max_idle_sleep)
-                continue
-
-            frame = latest.get("frame")
-            if frame is None:
-                time.sleep(self.max_idle_sleep)
-                continue
-
-            frame_idx = int(latest.get("frame_count", 0))
-            if frame_idx == self.last_processed_frame_idx:
-                time.sleep(self.max_idle_sleep)
-                continue
-
-            self.last_processed_frame_idx = frame_idx
-            ts = float(latest.get("timestamp", time.time()))
-            cam_name = str(latest.get("name", self.camera_name))
-
-            try:
-                # YOLO track with ByteTrack per camera worker.
-                results = self.model.track(
-                    frame,
-                    persist=True,
-                    conf=self.conf_thresh,
-                    tracker=self.tracker_yaml,
-                    verbose=False,
-                )
-                result = results[0]
-
-                parsed = self.parser.parse_ultralytics_result(
-                    cam_id=self.cam_id,
-                    camera_name=cam_name,
-                    result=result,
-                    timestamp=ts,
-                    frame_idx=frame_idx,
-                )
-                annotated = self._annotate(frame, parsed)
-
-                with self.lock:
-                    self.latest_state = CameraDetectionState(
-                        cam_id=self.cam_id,
-                        name=cam_name,
-                        timestamp=parsed.timestamp,
-                        frame_count=parsed.frame_idx,
-                        accident_found=parsed.accident_found,
-                        accident_conf=float(parsed.accident_conf),
-                        vehicle_count=int(parsed.vehicle_count),
-                        vehicle_ids=list(parsed.vehicle_ids),
-                        tracks=list(parsed.tracks),
-                        annotated_frame=annotated,
-                        last_error=None,
-                    )
-            except Exception as e:
-                with self.lock:
-                    self.latest_state.last_error = str(e)
-                time.sleep(self.max_idle_sleep)
-
-    def get_state(self) -> CameraDetectionState:
-        with self.lock:
-            return CameraDetectionState(
-                cam_id=self.latest_state.cam_id,
-                name=self.latest_state.name,
-                timestamp=self.latest_state.timestamp,
-                frame_count=self.latest_state.frame_count,
-                accident_found=self.latest_state.accident_found,
-                accident_conf=self.latest_state.accident_conf,
-                vehicle_count=self.latest_state.vehicle_count,
-                vehicle_ids=list(self.latest_state.vehicle_ids),
-                tracks=list(self.latest_state.tracks),
-                annotated_frame=None if self.latest_state.annotated_frame is None else self.latest_state.annotated_frame.copy(),
-                last_error=self.latest_state.last_error,
-            )
-
+# ─────────────────────────────────────────────────────────────────────────────
+# Detector manager
+# ─────────────────────────────────────────────────────────────────────────────
 
 class DetectorManager:
-    """High-level detector manager for multiple cameras."""
+    """
+    Single-YOLO sequential detector for all cameras.
+
+    Replaces the original architecture (one YOLO instance per camera thread)
+    with a single model that processes cameras one at a time.  Per-camera
+    ByteTrack state is saved/restored via deepcopy so track IDs never bleed
+    across camera streams.
+
+    Public API is unchanged from the original DetectorManager so orchestrators
+    need no modifications.
+    """
+
+    _CLASS_MAP = {0: "accident", 1: "bus", 2: "car", 3: "motorcycle", 4: "truck"}
 
     def __init__(
         self,
@@ -295,243 +134,260 @@ class DetectorManager:
         accident_class_id: int = 0,
         vehicle_class_ids: Optional[List[int]] = None,
         tracker_yaml: str = "bytetrack.yaml",
-        enable_preview: bool = False,
-        preview_scale: float = 1.0,
+        imgsz: int = 416,
+        use_openvino: bool = True,
+        enable_annotation: bool = False,
     ) -> None:
         self.model_path = Path(model_path)
         self.camera_manager = camera_manager
         self.conf_thresh = float(conf_thresh)
         self.accident_conf_thresh = float(accident_conf_thresh)
         self.accident_class_id = int(accident_class_id)
-        self.vehicle_class_ids = [1, 2, 3, 4] if vehicle_class_ids is None else list(vehicle_class_ids)
+        self.vehicle_class_ids = list(vehicle_class_ids or [1, 2, 3, 4])
         self.tracker_yaml = tracker_yaml
-        self.enable_preview = enable_preview
-        self.preview_scale = float(preview_scale)
+        self.imgsz = int(imgsz)
+        self.enable_annotation = enable_annotation
+        self.running = False
 
         if not self.model_path.exists():
             raise FileNotFoundError(f"YOLO model not found: {self.model_path}")
 
-        self.workers: Dict[Union[int, str], _CameraDetectorWorker] = {}
-        self.running = False
-        self._build_workers()
+        self.model = _load_yolo(self.model_path, use_openvino)
 
-    def _build_workers(self) -> None:
-        self.workers.clear()
-        latest = self.camera_manager.get_latest_frames(copy=False)
-        for cam_id, item in latest.items():
-            worker = _CameraDetectorWorker(
-                cam_id=cam_id,
-                camera_name=str(item.get("name", cam_id)),
-                model_path=self.model_path,
-                camera_manager=self.camera_manager,
-                conf_thresh=self.conf_thresh,
-                accident_conf_thresh=self.accident_conf_thresh,
-                accident_class_id=self.accident_class_id,
-                vehicle_class_ids=self.vehicle_class_ids,
-                tracker_yaml=self.tracker_yaml,
-                enable_preview=self.enable_preview,
-                preview_scale=self.preview_scale,
-            )
-            self.workers[cam_id] = worker
+        self._parsers: Dict[Union[int, str], TrackerParser] = {}
+        self._tracker_states: Dict[Union[int, str], Any] = {}
+        self._active_cam_id: Optional[Union[int, str]] = None
+        self._cam_states: Dict[Union[int, str], CameraDetectionState] = {}
+        self._lock = threading.Lock()
 
-    def start(self) -> None:
-        if self.running:
+        self._init_per_camera_state()
+
+    # ── Initialisation ─────────────────────────────────────────────────────────
+
+    def _init_per_camera_state(self) -> None:
+        # Parsers are registered lazily in process_single_frame().
+        # Nothing to do here — cameras may not be open yet at __init__ time.
+        pass
+
+    def _register_camera(self, cam_id: Union[int, str], name: str) -> None:
+        if cam_id in self._parsers:
             return
-        if not self.camera_manager.running:
-            raise RuntimeError("camera_manager must be started before detector_manager.")
-        for worker in self.workers.values():
-            worker.start()
-        self.running = True
+        self._parsers[cam_id] = TrackerParser(
+            class_map=self._CLASS_MAP,
+            vehicle_class_ids=self.vehicle_class_ids,
+            accident_class_id=self.accident_class_id,
+            accident_conf_thresh=self.accident_conf_thresh,
+        )
+        self._cam_states[cam_id] = CameraDetectionState(cam_id=cam_id, name=name)
 
-    def stop(self) -> None:
-        for worker in self.workers.values():
-            worker.stop()
-        self.running = False
+    # ── ByteTrack state management ─────────────────────────────────────────────
+
+    def _swap_tracker_state(self, cam_id: Union[int, str]) -> None:
+        """
+        Save the departing camera's ByteTrack state and restore the arriving
+        camera's state.  If the arriving camera is new, reset the tracker so
+        Kalman filters start fresh for that stream.
+        """
+        pred = getattr(self.model, "predictor", None)
+        if pred is None:
+            return
+        trackers = getattr(pred, "trackers", None)
+        if not trackers:
+            return
+
+        if self._active_cam_id is not None and self._active_cam_id != cam_id:
+            try:
+                self._tracker_states[self._active_cam_id] = copy.deepcopy(trackers[0])
+            except Exception:
+                pass
+
+        if cam_id in self._tracker_states:
+            try:
+                trackers[0] = copy.deepcopy(self._tracker_states[cam_id])
+                self._active_cam_id = cam_id
+                return
+            except Exception:
+                pass
+
+        try:
+            trackers[0].reset()
+        except Exception:
+            pass
+        self._active_cam_id = cam_id
+
+    # ── Primary inference method ───────────────────────────────────────────────
+
+    def process_single_frame(
+        self,
+        cam_id: Union[int, str],
+        frame: np.ndarray,
+        timestamp: float,
+        frame_idx: int,
+        cam_name: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Run YOLO + ByteTrack on one frame from one camera.
+        Called sequentially by InferenceThread for each camera in turn.
+        Returns a structured dict compatible with get_latest_snapshot().
+        """
+        name = cam_name or str(self._cam_states.get(cam_id, CameraDetectionState(cam_id, str(cam_id))).name)
+        if cam_id not in self._parsers:
+            self._register_camera(cam_id, name)
+
+        try:
+            self._swap_tracker_state(cam_id)
+            results = self.model.track(
+                frame,
+                persist=True,
+                conf=self.conf_thresh,
+                tracker=self.tracker_yaml,
+                imgsz=self.imgsz,
+                verbose=False,
+            )
+            parsed = self._parsers[cam_id].parse_ultralytics_result(
+                cam_id=cam_id,
+                camera_name=name,
+                result=results[0],
+                timestamp=timestamp,
+                frame_idx=frame_idx,
+            )
+            annotated = self._annotate(frame, parsed) if self.enable_annotation else None
+            state = CameraDetectionState(
+                cam_id=cam_id,
+                name=name,
+                timestamp=parsed.timestamp,
+                frame_count=parsed.frame_idx,
+                accident_found=parsed.accident_found,
+                accident_conf=float(parsed.accident_conf),
+                vehicle_count=int(parsed.vehicle_count),
+                vehicle_ids=list(parsed.vehicle_ids),
+                tracks=list(parsed.tracks),
+                annotated_frame=annotated,
+                last_error=None,
+            )
+            with self._lock:
+                self._cam_states[cam_id] = state
+            return self._state_to_dict(state)
+
+        except Exception as exc:
+            logger.exception("Inference failed for cam %s", cam_id)
+            with self._lock:
+                if cam_id in self._cam_states:
+                    self._cam_states[cam_id].last_error = str(exc)
+            return None
+
+    # ── Snapshot / query API ───────────────────────────────────────────────────
 
     def get_latest_snapshot(self) -> Dict[Union[int, str], Dict[str, Any]]:
-        snapshot: Dict[Union[int, str], Dict[str, Any]] = {}
-        for cam_id, worker in self.workers.items():
-            state = worker.get_state()
-            snapshot[cam_id] = {
-                "cam_id": state.cam_id,
-                "name": state.name,
-                "timestamp": state.timestamp,
-                "frame_count": state.frame_count,
-                "accident_found": state.accident_found,
-                "accident_conf": state.accident_conf,
-                "vehicle_count": state.vehicle_count,
-                "vehicle_ids": list(state.vehicle_ids),
-                "tracks": [
-                    {
-                        "track_id": t.track_id,
-                        "cls_id": t.cls_id,
-                        "label": t.label,
-                        "conf": t.conf,
-                        "bbox": list(t.bbox),
-                        "center": t.center,
-                        "width": t.width,
-                        "height": t.height,
-                        "area": t.area,
-                        "speed_px_s": t.speed_px_s,
-                        "motion_dx": t.motion_dx,
-                        "motion_dy": t.motion_dy,
-                        "age_frames": t.age_frames,
-                    }
-                    for t in state.tracks
-                ],
-                "annotated_frame": state.annotated_frame,
-                "last_error": state.last_error,
-            }
-        return snapshot
+        with self._lock:
+            return {cam_id: self._state_to_dict(s) for cam_id, s in self._cam_states.items()}
 
     def step(self) -> Dict[Union[int, str], Dict[str, Any]]:
-        """Compatibility alias for synchronous polling style."""
         return self.get_latest_snapshot()
 
     def get_accident_flags(self) -> Dict[Union[int, str], bool]:
-        snap = self.get_latest_snapshot()
-        return {cam_id: bool(data["accident_found"]) for cam_id, data in snap.items()}
+        return {k: bool(v["accident_found"]) for k, v in self.get_latest_snapshot().items()}
 
     def get_vehicle_counts(self) -> Dict[Union[int, str], int]:
-        snap = self.get_latest_snapshot()
-        return {cam_id: int(data["vehicle_count"]) for cam_id, data in snap.items()}
+        return {k: int(v["vehicle_count"]) for k, v in self.get_latest_snapshot().items()}
 
     def build_semantic_state(self) -> Dict[Union[int, str], Dict[str, Any]]:
-        """Compact state suitable for a downstream adapter (e.g., PPO state builder)."""
         snap = self.get_latest_snapshot()
-        out: Dict[Union[int, str], Dict[str, Any]] = {}
-        for cam_id, data in snap.items():
-            out[cam_id] = {
-                "vehicle_count": data["vehicle_count"],
-                "accident": data["accident_found"],
-                "accident_conf": data["accident_conf"],
-                "track_ids": list(data["vehicle_ids"]),
-                "timestamp": data["timestamp"],
-                "frame_count": data["frame_count"],
-                "last_error": data["last_error"],
+        return {
+            cam_id: {
+                "vehicle_count": d["vehicle_count"],
+                "accident": d["accident_found"],
+                "accident_conf": d["accident_conf"],
+                "track_ids": list(d["vehicle_ids"]),
+                "timestamp": d["timestamp"],
+                "frame_count": d["frame_count"],
+                "last_error": d["last_error"],
             }
-        return out
+            for cam_id, d in snap.items()
+        }
 
-    def preview_loop(self, window_name: str = "Detector Manager Preview", max_width: int = 1800) -> None:
-        """Optional interactive preview. Press q to quit."""
-        cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-        try:
-            while True:
-                snap = self.get_latest_snapshot()
-                frames = []
-                labels = []
-                for cam_id in self.camera_manager.camera_ids:
-                    item = snap.get(cam_id, {})
-                    frame = item.get("annotated_frame")
-                    name = item.get("name", str(cam_id))
-                    if frame is None:
-                        frame = np.zeros((270, 480, 3), dtype=np.uint8)
-                    frames.append(frame)
-                    labels.append(
-                        f"{name} | vehicles={item.get('vehicle_count', 0)} | accident={item.get('accident_found', False)}"
-                    )
+    # ── Lifecycle ──────────────────────────────────────────────────────────────
 
-                if not frames:
-                    canvas = np.zeros((720, 1280, 3), dtype=np.uint8)
-                else:
-                    tile_size = (480, 270)
-                    tiles = []
-                    for frame, label in zip(frames, labels):
-                        tile = cv2.resize(frame, tile_size)
-                        tile = _draw_status_panel(tile, [label])
-                        tiles.append(tile)
+    def start(self) -> None:
+        self.running = True
 
-                    cols = 4 if len(tiles) >= 4 else len(tiles)
-                    rows = int(np.ceil(len(tiles) / cols))
-                    blank = np.zeros_like(tiles[0])
-                    while len(tiles) < rows * cols:
-                        tiles.append(blank.copy())
+    def stop(self) -> None:
+        self.running = False
 
-                    row_imgs = []
-                    for r in range(rows):
-                        row_imgs.append(np.hstack(tiles[r * cols : (r + 1) * cols]))
-                    canvas = np.vstack(row_imgs)
-                    if canvas.shape[1] > max_width:
-                        scale = max_width / canvas.shape[1]
-                        canvas = cv2.resize(canvas, (int(canvas.shape[1] * scale), int(canvas.shape[0] * scale)))
+    # ── Annotation (dashboard / preview only) ──────────────────────────────────
 
-                cv2.imshow(window_name, canvas)
-                if (cv2.waitKey(1) & 0xFF) == ord("q"):
-                    break
-        finally:
-            cv2.destroyAllWindows()
+    def _annotate(self, frame: np.ndarray, parsed: ParsedFrame) -> np.ndarray:
+        canvas = frame.copy()
+        for track in parsed.tracks:
+            x1, y1, x2, y2 = map(int, track.bbox)
+            color = self._track_color(track.track_id, track.cls_id)
+            cv2.rectangle(canvas, (x1, y1), (x2, y2), color, 2)
+            label = f"{track.label} v={track.speed_px_s:.1f}px/s"
+            (tw, _), _ = cv2.getTextSize(label, cv2.FONT_HERSHEY_SIMPLEX, 0.45, 1)
+            cv2.rectangle(canvas, (x1, max(0, y1 - 20)), (x1 + tw + 6, y1), color, -1)
+            cv2.putText(canvas, label, (x1 + 3, max(12, y1 - 6)),
+                        cv2.FONT_HERSHEY_SIMPLEX, 0.45, (255, 255, 255), 1)
+        cv2.putText(canvas, f"Vehicles: {parsed.vehicle_count}",
+                    (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 255, 0), 2)
+        if parsed.accident_found:
+            cv2.putText(canvas, f"ACCIDENT {parsed.accident_conf:.2f}",
+                        (10, 60), cv2.FONT_HERSHEY_SIMPLEX, 0.8, (0, 0, 255), 2)
+        ts_str = datetime.fromtimestamp(parsed.timestamp).strftime("%Y-%m-%d %H:%M:%S")
+        cv2.putText(canvas, ts_str, (10, max(canvas.shape[0] - 12, 20)),
+                    cv2.FONT_HERSHEY_SIMPLEX, 0.55, (255, 255, 0), 2)
+        return canvas
 
+    def _track_color(self, track_id: Optional[int], cls_id: int) -> Tuple[int, int, int]:
+        if cls_id == self.accident_class_id:
+            return (0, 0, 255)
+        if cls_id in self.vehicle_class_ids:
+            if track_id is not None and track_id >= 0:
+                return (int((track_id * 37) % 255),
+                        int((track_id * 17) % 255),
+                        int((track_id * 29) % 255))
+            return (255, 0, 0)
+        return (200, 200, 200)
+
+    # ── Serialisation helper ───────────────────────────────────────────────────
+
+    @staticmethod
+    def _state_to_dict(state: CameraDetectionState) -> Dict[str, Any]:
+        return {
+            "cam_id": state.cam_id,
+            "name": state.name,
+            "timestamp": state.timestamp,
+            "frame_count": state.frame_count,
+            "accident_found": state.accident_found,
+            "accident_conf": state.accident_conf,
+            "vehicle_count": state.vehicle_count,
+            "vehicle_ids": list(state.vehicle_ids),
+            "tracks": [
+                {
+                    "track_id": t.track_id,
+                    "cls_id": t.cls_id,
+                    "label": t.label,
+                    "conf": t.conf,
+                    "bbox": list(t.bbox),
+                    "center": t.center,
+                    "width": t.width,
+                    "height": t.height,
+                    "area": t.area,
+                    "speed_px_s": t.speed_px_s,
+                    "motion_dx": t.motion_dx,
+                    "motion_dy": t.motion_dy,
+                    "age_frames": t.age_frames,
+                }
+                for t in state.tracks
+            ],
+            "annotated_frame": state.annotated_frame,
+            "last_error": state.last_error,
+        }
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Config loader (unchanged)
+# ─────────────────────────────────────────────────────────────────────────────
 
 def load_detector_config(path: Union[str, Path]) -> Dict[str, Any]:
     with open(path, "r", encoding="utf-8") as f:
         return json.load(f)
-
-
-def run_demo(
-    camera_config: Union[str, Path],
-    model_path: Union[str, Path],
-    duration: Optional[float] = None,
-    enable_preview=False,
-) -> None:
-    cam_mgr = MultiCameraManager(camera_config)
-    cam_mgr.start(warmup_sec=0.7)
-
-    det_mgr = DetectorManager(
-        model_path=model_path,
-        camera_manager=cam_mgr,
-        conf_thresh=0.5,
-        accident_conf_thresh=0.7,
-        accident_class_id=0,
-        vehicle_class_ids=[1, 2, 3, 4],
-        tracker_yaml="bytetrack.yaml",
-        enable_preview=enable_preview,
-    )
-    det_mgr.start()
-
-    print("Detector manager is running.")
-
-    if enable_preview:
-        print("Press 'q' to quit preview window")
-        try:
-            det_mgr.preview_loop()
-        finally:
-            det_mgr.stop()
-            cam_mgr.stop()
-        return
-
-    start = time.time()
-
-    try:
-        while True:
-            snap = det_mgr.get_latest_snapshot()
-            total_vehicle = sum(int(v["vehicle_count"]) for v in snap.values())
-            any_accident = any(bool(v["accident_found"]) for v in snap.values())
-            print(f"vehicles={total_vehicle} | accident={any_accident}", end="\r")
-
-            if duration is not None and duration > 0 and (time.time() - start) >= duration:
-                break
-            time.sleep(0.1)
-    finally:
-        det_mgr.stop()
-        cam_mgr.stop()
-
-
-def main() -> None:
-    parser = argparse.ArgumentParser(description="Multi-camera detector manager demo")
-    parser.add_argument("--camera-config", type=str, default="configs/camera_config.json")
-    parser.add_argument("--model", type=str, default="models/yolo/best.pt")
-    parser.add_argument("--duration", type=float, default=None)
-    parser.add_argument("--preview", action="store_true", help="Enable OpenCV preview window.")
-
-    args = parser.parse_args()
-
-    run_demo(
-        args.camera_config,
-        args.model,
-        duration=args.duration,
-        enable_preview=args.preview   
-    )
-
-
-if __name__ == "__main__":
-    main()

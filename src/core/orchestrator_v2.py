@@ -37,7 +37,7 @@ Run
     python orchestrator_v2.py \
         --config configs/state_config.json \
         --camera-config configs/camera_config.json \
-        --model models/yolo/best.pt \
+        --model models/yolo/yolov11.pt \
         --policy models/mappo/20260418_215140/best_model.pt \
         --serial-port COM3 \
         --hz 2.0
@@ -54,10 +54,17 @@ import time
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Union
 
+# ── Ensure both project root and src/core are on sys.path ─────────────────────
+_FILE = Path(__file__).resolve()
+_PROJECT_ROOT = _FILE.parents[2]   # Traffic-Guard-AI-main/
+_CORE_DIR = _FILE.parent           # src/core/
+for _p in (_PROJECT_ROOT, _CORE_DIR):
+    if str(_p) not in sys.path:
+        sys.path.insert(0, str(_p))
+
 # ── Project imports ────────────────────────────────────────────────────────────
-# (adjust to your actual package structure)
 from camera_manager_v2 import CameraManagerV2, CameraHealth
-from inference_engine import InferenceThread, ControlThread, DropCounter
+from inference_engine import InferenceThread, ControlThread, DropCounter, AccidentThread
 from policy_loader import PolicyLoader
 from metrics_collector import MetricsCollector
 
@@ -228,6 +235,8 @@ class TrafficOrchestrator:
             accident_class_id=0,
             vehicle_class_ids=[1, 2, 3, 4],
             tracker_yaml="bytetrack.yaml",
+            imgsz=640,  # must match OpenVINO export shape
+            use_openvino=True,
         )
 
         # ── 7. Accident detector ───────────────────────────────────────────────
@@ -309,6 +318,18 @@ class TrafficOrchestrator:
             metrics_callback=self._on_control_step,
         )
 
+        # ── 13. Accident thread (independent, 320px, ~5fps/camera) ────────────
+        self._accident_thread = AccidentThread(
+            model_path=model_path,
+            camera_manager=self._cam_mgr,
+            accident_detector=self._accident_detector,
+            drop_counter=self._drop_counter,
+            conf_thresh=0.6,
+            imgsz=320,
+            use_openvino=False,  # OpenVINO has fixed 640px shape; .pt supports dynamic imgsz
+            target_fps=5.0,
+        )
+
         self._running = False
 
     # ── Lifecycle ──────────────────────────────────────────────────────────────
@@ -337,8 +358,9 @@ class TrafficOrchestrator:
         # Wait for first inference snapshot
         time.sleep(1.5)
 
-        # Start control loop
+        # Start control loop + accident detector
         self._ctrl_thread.start()
+        self._accident_thread.start()
         self._metrics.start()
         self._running = True
 
@@ -352,6 +374,7 @@ class TrafficOrchestrator:
         self._running = False
         # Stop in reverse dependency order
         self._ctrl_thread.stop()
+        self._accident_thread.stop()
         self._infer_thread.stop()
         self._det_mgr.stop()
         self._cam_mgr.stop()
@@ -472,7 +495,7 @@ def _build_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--config",          default="configs/state_config.json")
     p.add_argument("--camera-config",   default="configs/camera_config.json")
-    p.add_argument("--model",           default="models/yolo/best.pt")
+    p.add_argument("--model",           default="models/yolo/yolov11.pt")
     p.add_argument("--policy",          default=None,   help="MAPPO checkpoint (.pt)")
     p.add_argument("--tele-config",     default="configs/tele.json")
     p.add_argument("--serial-port",     default=None,   help="Arduino serial port")

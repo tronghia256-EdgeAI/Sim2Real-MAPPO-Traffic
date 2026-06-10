@@ -10,7 +10,7 @@
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.9%2B-3b82f6?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![SUMO](https://img.shields.io/badge/SUMO-1.18%2B-f97316?style=for-the-badge)](https://sumo.dlr.de/)
-[![YOLOv8](https://img.shields.io/badge/YOLOv8-Ultralytics-7c3aed?style=for-the-badge)](https://github.com/ultralytics/ultralytics)
+[![YOLOv11](https://img.shields.io/badge/YOLOv11-Ultralytics-7c3aed?style=for-the-badge)](https://github.com/ultralytics/ultralytics)
 
 <br/>
 
@@ -51,7 +51,7 @@ The reward function is grounded in the **PRESSLIGHT** (KDD 2019) and **CoLight**
 
 - 🎯 **Nonlinear Queue Penalty** — `mean_q²` amplifies gradient during sustained congestion while staying near-zero in free-flow, preventing noisy updates on lightly-loaded intersections.
 
-- 👁️ **Full Vision Pipeline** — YOLOv8s (custom 5-class model: accident / bus / car / motorcycle / truck) + ByteTrack multi-object tracking, running in parallel per-camera threads.
+- 👁️ **Full Vision Pipeline** — YOLOv11n-seg (custom 5-class model: accident / bus / car / motorcycle / truck) + ByteTrack multi-object tracking. Single shared model processes all cameras sequentially with per-camera tracker state isolation via deepcopy. OpenVINO INT8 quantized for maximum CPU throughput.
 
 - 📦 **Production Orchestrator** — Multi-threaded runtime with safe-mode fallback (>25% stale cameras → hold phase), automatic policy failure recovery (fixed-cycle fallback), and dry-run mode for testing without hardware.
 
@@ -99,8 +99,10 @@ The reward function is grounded in the **PRESSLIGHT** (KDD 2019) and **CoLight**
                               │  (8 parallel threads)
                     MultiCameraManager
                               │
-                    DetectorManager  ◄── YOLOv8s + ByteTrack
-                              │          (one worker per camera)
+                    DetectorManager  ◄── YOLOv11n-seg INT8 OpenVINO
+                              │          (single model, sequential)
+                    AccidentThread   ◄── dedicated 5fps accident model
+                              │
                     AccidentEventDetector
                               │  3-frame confirm → Telegram + JPEG
                     VisionToState.build_packet()
@@ -270,13 +272,13 @@ Training logs are written to `logs/rl/<run_name>/`:
 python src/core/system_orchestrator.py \
   --config        configs/state_config.json \
   --camera-config configs/camera_config.json \
-  --model         models/yolo/best.pt \
+  --model         models/yolo/yolov11.pt \
   --policy        models/mappo/20260418_215140/best_model.pt \
   --serial-port   COM3
 
 # Dry-run — no Arduino hardware required
 python src/core/system_orchestrator.py \
-  --model  models/yolo/best.pt \
+  --model  models/yolo/yolov11.pt \
   --policy models/mappo/20260418_215140/best_model.pt \
   --no-serial
 ```
@@ -411,7 +413,7 @@ Sim2Real-MAPPO-Traffic/
 │   ├── test_ppo.py                  # MAPPO training + evaluation entry point
 │   └── baselines/                   # Max Pressure, SOTL, Fixed-Time
 ├── models/
-│   ├── yolo/best.pt                 # Custom YOLOv8s (5-class)
+│   ├── yolo/yolov11.pt              # Custom YOLOv11n-seg (5-class)
 │   └── mappo/                       # MAPPO checkpoints by timestamp
 ├── docs/
 │   └── reward.md                    # Reward function design reference
@@ -458,9 +460,9 @@ Sim2Real-MAPPO-Traffic/
 > *Microscopic Traffic Simulation using SUMO.*
 > **IEEE ITSC 2018.** https://doi.org/10.1109/ITSC.2018.8569938
 
-**[5] YOLOv8**
-> Glenn Jocher, Ayush Chaurasia, Jing Qiu.
-> *Ultralytics YOLOv8.* 2023.
+**[5] YOLOv11**
+> Glenn Jocher et al.
+> *Ultralytics YOLO11.* 2024.
 > https://github.com/ultralytics/ultralytics
 
 **[6] ByteTrack**

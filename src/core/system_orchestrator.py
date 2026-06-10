@@ -24,11 +24,11 @@ Runtime pipeline
 
 Usage
 -----
-  python run_orchestrator.py --config configs/state_config.json \
-                              --camera-config configs/camera_config.json \
-                              --model models/best_yolo_model.pt \
-                              --policy models/mappo/20260418_215140/best_model.pt \
-                              --serial-port COM3
+  python src/core/orchestrator_v2.py --config configs/state_config.json \
+                                      --camera-config configs/camera_config.json \
+                                      --model models/yolo/yolov11.pt \
+                                      --policy models/mappo/20260418_215140/best_model.pt \
+                                      --serial-port COM3
 
 Inference-only.  No SUMO / traci import.  No training code.
 """
@@ -384,6 +384,8 @@ class TrafficSystemOrchestrator:
         tele_config_path: Optional[Union[str, Path]] = None,
         serial_port: Optional[str] = "COM3",
         serial_baud: int = 115200,
+        yellow_duration: float = 3.0,
+        red_gap: float = 1.0,
         control_hz: float = 2.0,
         buffer_maxlen: int = 5,
         buffer_ema_alpha: float = 0.6,
@@ -517,6 +519,9 @@ class TrafficSystemOrchestrator:
         self._action_map:   Dict[str, int]   = {t: 0   for t in self.tls_ids}
         self._green_timers: Dict[str, float] = {t: 30.0 for t in self.tls_ids}
         self._phase_start:  Dict[str, float] = {t: time.time() for t in self.tls_ids}
+        self._prev_serial_states: List[int]  = [_S_RED] * (len(self.tls_ids) * 4)
+        self._yellow_duration: float = yellow_duration
+        self._red_gap: float = red_gap
         self._running: bool = False
         self._last_frame_count: Dict[Union[str, int], int] = {}
         self._dropped_frames_total: int = 0
@@ -807,6 +812,7 @@ class TrafficSystemOrchestrator:
         except Exception as e:
             logger.exception("SerialBridge.pack_and_send_data() raised: %s", e)
 
+
     @staticmethod
     def _log_step(
         loop_idx:        int,
@@ -848,7 +854,7 @@ def _build_arg_parser() -> argparse.ArgumentParser:
     )
     p.add_argument("--config",         type=str, default="configs/state_config.json",  help="State config (JSON)")
     p.add_argument("--camera-config",  type=str, default="configs/camera_config.json", help="Camera config (JSON)")
-    p.add_argument("--model",          type=str, default="models/yolo/best.pt",  help="YOLO model path")
+    p.add_argument("--model",          type=str, default="models/yolo/yolov11.pt",  help="YOLO model path")
     p.add_argument("--policy",         type=str, default=None,                          help="MAPPO policy checkpoint (.pt)")
     p.add_argument("--tele-config",    type=str, default="configs/tele.json",           help="Telegram config (JSON)")
     p.add_argument("--serial-port",    type=str, default="COM3",                        help="Arduino serial port")
@@ -868,6 +874,17 @@ def main() -> None:
     serial_port: Optional[str] = None if args.no_serial else args.serial_port
     tele_path:   Optional[str] = args.tele_config if Path(args.tele_config).exists() else None
 
+    # Load yellow_duration and red_gap from serial.json if available
+    serial_cfg_path = Path("configs/serial.json")
+    yellow_duration = 3.0
+    red_gap = 1.0
+    if serial_cfg_path.exists():
+        import json as _json
+        with open(serial_cfg_path) as _f:
+            _scfg = _json.load(_f)
+        yellow_duration = float(_scfg.get("yellow_duration", yellow_duration))
+        red_gap = float(_scfg.get("red_gap", red_gap))
+
     # buffer_ema_alpha is read from system_params.temporal_smoothing in __init__
     # if present in config; default 0.6 is used otherwise.
     orchestrator = TrafficSystemOrchestrator(
@@ -878,6 +895,8 @@ def main() -> None:
         tele_config_path=tele_path,
         serial_port=serial_port,
         serial_baud=args.serial_baud,
+        yellow_duration=yellow_duration,
+        red_gap=red_gap,
         control_hz=args.hz,
         buffer_maxlen=args.buffer,
     )

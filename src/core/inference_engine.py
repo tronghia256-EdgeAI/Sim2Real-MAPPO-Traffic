@@ -288,6 +288,8 @@ class ControlThread:
         min_phase_sec: float = 10.0,
         epsilon: float = 0.0,
         fallback_green_sec: int = 30,
+        yellow_duration: float = 3.0,
+        red_gap: float = 1.0,
         metrics_callback: Optional[Callable[[Dict[str, Any]], None]] = None,
     ) -> None:
         self._infer = inference_thread
@@ -301,12 +303,16 @@ class ControlThread:
         self._min_phase_sec = min_phase_sec
         self._epsilon = epsilon
         self._fallback_green_sec = fallback_green_sec
+        self._yellow_duration = yellow_duration
+        self._red_gap = red_gap
         self._metrics_cb = metrics_callback
 
         # ── Runtime state ──────────────────────────────────────────────────────
         self._phase_map: Dict[str, int] = {t: 0 for t in tls_ids}
         self._green_timers: Dict[str, float] = {t: 0.0 for t in tls_ids}
         self._phase_start: Dict[str, float] = {t: time.time() for t in tls_ids}
+        # Tracks last-sent per-direction states to know which dirs were GREEN
+        self._prev_serial_states: List[int] = [0] * (len(tls_ids) * 4)
         self._consecutive_fallbacks: int = 0
 
         self._stop_event = threading.Event()
@@ -535,3 +541,128 @@ class ControlThread:
                 group = d // 2   # dirs 0,1 → group 0; dirs 2,3 → group 1
                 states.append(_GREEN if group == phase else _RED)
         return states
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Accident thread
+# ─────────────────────────────────────────────────────────────────────────────
+
+class AccidentThread:
+    """
+    Lightweight accident-only detector running independently of InferenceThread.
+
+    Motivation
+    ----------
+    InferenceThread processes all 8 cameras sequentially for vehicle tracking
+    (416 px, ByteTrack).  At ~50 ms/camera on CPU that gives each camera ~2.5 fps
+    — fine for traffic-signal control but too slow for accident streak confirmation.
+
+    AccidentThread runs a *separate* YOLO instance at 320 px, no tracker,
+    class 0 only.  Each inference is ~20 ms, so the full 8-camera cycle is
+    ~160 ms → ~5 fps per camera.  This keeps the 3-frame confirmation window
+    below 600 ms, acceptable for alerting.
+
+    The two threads are fully independent: no shared model, no lock.
+    AccidentThread feeds results directly into AccidentEventDetector.update().
+    """
+
+    def __init__(
+        self,
+        model_path: Union[str, Path],
+        camera_manager: Any,
+        accident_detector: Any,
+        drop_counter: DropCounter,
+        conf_thresh: float = 0.6,
+        imgsz: int = 320,
+        use_openvino: bool = True,
+        target_fps: float = 5.0,
+        max_age_sec: float = 5.0,
+    ) -> None:
+        from pathlib import Path
+        from src.vision.detector import _load_yolo
+        self._model = _load_yolo(Path(model_path), use_openvino)
+        self._cam_mgr = camera_manager
+        self._accident_detector = accident_detector
+        self._drop_counter = drop_counter
+        self._conf_thresh = float(conf_thresh)
+        self._imgsz = int(imgsz)
+        self._target_fps = max(float(target_fps), 1.0)
+        self._max_age_sec = float(max_age_sec)
+
+        self._stop_event = threading.Event()
+        self._thread: Optional[threading.Thread] = None
+        self._fps_meter = FPSMeter()
+
+    def start(self) -> None:
+        self._stop_event.clear()
+        self._thread = threading.Thread(
+            target=self._loop, name="accident-thread", daemon=True
+        )
+        self._thread.start()
+
+    def stop(self) -> None:
+        self._stop_event.set()
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=5.0)
+
+    @property
+    def fps(self) -> float:
+        return self._fps_meter.fps
+
+    def _loop(self) -> None:
+        period = 1.0 / self._target_fps
+        while not self._stop_event.is_set():
+            t0 = time.perf_counter()
+            try:
+                self._step()
+                self._fps_meter.tick()
+            except Exception:
+                logger.exception("AccidentThread error — continuing")
+            elapsed = time.perf_counter() - t0
+            sleep_t = max(period - elapsed, 0.0)
+            if sleep_t > 0:
+                time.sleep(sleep_t)
+
+    def _step(self) -> None:
+        valid_frames = self._cam_mgr.get_valid_frames(max_age_sec=self._max_age_sec)
+        if not valid_frames:
+            return
+
+        snapshot: Dict[Union[int, str], Dict[str, Any]] = {}
+        for cam_id, cf in valid_frames.items():
+            try:
+                results = self._model.predict(
+                    cf.frame,
+                    imgsz=self._imgsz,
+                    classes=[0],
+                    conf=self._conf_thresh,
+                    verbose=False,
+                )
+                boxes = getattr(results[0], "boxes", None)
+                accident_found = False
+                accident_conf = 0.0
+                if boxes is not None and len(boxes) > 0:
+                    for cls_id, conf in zip(
+                        boxes.cls.cpu().numpy().astype(int),
+                        boxes.conf.cpu().numpy(),
+                    ):
+                        if cls_id == 0:
+                            accident_found = True
+                            accident_conf = max(accident_conf, float(conf))
+
+                snapshot[cam_id] = {
+                    "cam_id": cam_id,
+                    "name": cf.name,
+                    "timestamp": cf.timestamp,
+                    "frame_count": cf.frame_count,
+                    "accident_found": accident_found,
+                    "accident_conf": accident_conf,
+                    "vehicle_count": 0,
+                    "tracks": [],
+                    "annotated_frame": cf.frame if accident_found else None,
+                }
+            except Exception:
+                logger.exception("AccidentThread inference failed for cam %s", cam_id)
+
+        if snapshot:
+            self._accident_detector.update(snapshot)

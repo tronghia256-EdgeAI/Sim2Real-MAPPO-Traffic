@@ -37,8 +37,8 @@ Thumbs.db
 
 # =============================================================================
 # ML model checkpoints
-# Keep:  best_model.pt  run_config.json  models/yolo/best.pt
-# Ignore: intermediate checkpoints and legacy weights
+# Keep:  best_model.pt  run_config.json  models/yolo/yolov11.pt
+# Ignore: intermediate checkpoints, legacy weights, and exported model dirs
 # =============================================================================
 models/**/checkpoint_*.pt
 models/**/last_model.pt
@@ -46,15 +46,16 @@ models/**/checkpoints/
 models/**/*.zip
 models/yolo/weights.pt
 models/yolo/best_yolo_model.pt
+models/yolo/best.pt
+models/yolo/*_openvino_model/
 
 # =============================================================================
 # Data
 # =============================================================================
-data/raw_video/*.mp4
-data/raw_video/*.avi
-data/raw_video/*.mkv
 data/processed/
 data/dataset/
+data/calibration/
+data/calibration.cache
 
 # =============================================================================
 # Logs  (keep training CSVs + tfevents; ignore generated media & old SB3 logs)
@@ -64,6 +65,8 @@ logs/events/*.jpeg
 logs/events/*.png
 logs/PPO_*/
 logs/evaluations.npz
+logs/system.log
+logs/performance.log
 
 # =============================================================================
 # Secrets & private configs
@@ -74,3 +77,4 @@ configs/tele.json
 # Tool-specific (not part of the project)
 # =============================================================================
 .aiignore
+NOTES.md
