@@ -1,10 +1,19 @@
 from __future__ import annotations
 
 """
-state_extractor.py  (audit-fixed v2)
+state_extractor.py  (audit-fixed v3 — schema 1.1.0)
 ======================================
 Convert YOLO + ByteTrack semantic outputs into the exact same observation layout
 that the current SUMO-based PPO / MAPPO policy was trained on.
+
+SCHEMA 1.1.0 (S1/S2):
+  S2  pressure_norm is now SIGNED: 0.5*(1 + mean_q(group_a) - mean_q(group_b)),
+      clipped to [0,1]; 0.5 = balanced. Matches observations.py exactly.
+  S1  (training side) each obs slot is now one APPROACH (lanes of one incoming
+      edge, aggregated). Deployment is unchanged structurally: each camera ROI
+      already covers one approach, so slot k = ROI k as before — but ROI order
+      in controlled_lanes_dict MUST match the training approach order
+      (getControlledLanes edge order). Verify via check_obs_match.py --sumo.
 
 AUDIT FIXES applied (see AUDIT_REPORT.md for full analysis):
   FIX-1  FEATURE_NAMES reduced from 7 → 5 to match observations.py.
@@ -37,8 +46,8 @@ Feature definitions (must match observations.py exactly):
   heavy_vehicle_share   = (bus+truck) count / vehicle_count           ∈ [0,1]
   phase_k               = one-hot for current phase ∈ {0,1,2,3}
   green_timer_norm      = elapsed_green_s / max_green_time            ∈ [0,1]
-  pressure_norm         = |Σeff_q_group_a − Σeff_q_group_b|
-                          / max_lanes_per_tls                         ∈ [0,1]
+  pressure_norm         = 0.5·(1 + mean_q(group_a) − mean_q(group_b))  ∈ [0,1]
+                          (signed; 0.5 = balanced — schema 1.1.0)
 
 Temporal smoothing
 ------------------
@@ -479,11 +488,14 @@ class StateExtractor:
         lane_metrics_cache: Dict[str, Dict[str, float]],
     ) -> float:
         """
-        FIX-3: pressure_norm = |Σeff_q_norm_a - Σeff_q_norm_b| / max_lanes_per_tls
+        S2 FIX (schema 1.1.0): SIGNED pressure feature in [0,1].
 
-        Uses effective_queue_norm (ratio ∈[0,1]) — not raw queue_count.
-        Normalises by max_lanes_per_tls — not queue_cap.
-        Matches observations.py _tls_pressure_proxy() exactly.
+        pressure_norm = clip(0.5 * (1 + mean_q(group_a) - mean_q(group_b)), 0, 1)
+
+        0.5 = balanced; >0.5 = group A (phase-0 lanes) more queued. Group MEANS
+        keep the value invariant to group size. Must stay formula-identical to
+        ObservationBuilder._tls_pressure_proxy() (training side) — verified by
+        scripts/check_obs_match.py CHECK 2.
         """
         empty = self._empty_lane_metrics()
 
@@ -491,17 +503,19 @@ class StateExtractor:
             return float(lane_metrics_cache.get(lid, empty).get("effective_queue_norm", 0.0))
 
         if tls_id in self.lane_groups:
-            group_a, group_b = self.lane_groups[tls_id]
-            qa = sum(eff_q(l) for l in group_a if l in lane_ids)
-            qb = sum(eff_q(l) for l in group_b if l in lane_ids)
+            raw_a, raw_b = self.lane_groups[tls_id]
+            group_a = [l for l in raw_a if l in lane_ids]
+            group_b = [l for l in raw_b if l in lane_ids]
         else:
             if len(lane_ids) < 2:
-                return 0.0
+                return 0.5  # no group info -> report balanced
             mid = len(lane_ids) // 2
-            qa  = sum(eff_q(l) for l in lane_ids[:mid])
-            qb  = sum(eff_q(l) for l in lane_ids[mid:])
+            group_a = list(lane_ids[:mid])
+            group_b = list(lane_ids[mid:])
 
-        return float(np.clip(abs(qa - qb) / max(self.max_lanes_per_tls, 1), 0.0, 1.0))
+        qa = sum(eff_q(l) for l in group_a) / max(len(group_a), 1)
+        qb = sum(eff_q(l) for l in group_b) / max(len(group_b), 1)
+        return float(np.clip(0.5 * (1.0 + qa - qb), 0.0, 1.0))
 
     # ──────────────────────────────────────────────────────────────────────────
     # Input helpers

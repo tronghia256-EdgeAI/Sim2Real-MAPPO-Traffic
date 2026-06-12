@@ -5,22 +5,39 @@ rewards.py
 ==========
 Per-agent reward calculator for MAPPO traffic-signal control.
 
-Reward signal
--------------
-R(t) = w_q  · queue_penalty(t)      — nonlinear congestion penalty  [0, 1]
-     + w_pr · pressure_penalty(t)   — phase-aware queue imbalance   [0, 1]
-     + w_t  · throughput_reward(t)  — cooperative cleared-vehicles  [0, 1]
-     + w_s  · switch_penalty(t)     — phase-switching cost          [0, ∞)
-     + w_w  · waiting_penalty(t)    — accumulated delay             [0, 1]
+Reward signal (reward revision 1.2.0)
+-------------------------------------
+R(t) = w_q  · queue_penalty(t)      — mean of SQUARED lane queues    [0, 1]
+     + w_pr · pressure_penalty(t)   — SIGNED phase-aware imbalance   [-1, 1]
+     + w_t  · throughput_reward(t)  — LOCAL lane-exit count          [0, 1]
+     + w_s  · switch_penalty(t)     — phase-switching cost           [0, ∞)
+     + w_sp · low_speed_penalty(t)  — mean speed below threshold     [0, thr]
+     + w_w  · waiting_penalty(t)    — accumulated delay              [0, 1]
 
-All component methods return non-negative floats; signs are applied via
-RewardConfig.weights (penalty weights are negative by convention).
+With default weights (queue=-1, pressure=-0.5, throughput=+1, switch=-0.1,
+low_speed=-0.2, waiting=-0.3) the raw range is [-1.94, +1.50], matching the
+clip range [-2.0, +1.5] in RewardConfig.
+
+1.2.0 changes (W5 campaign revision)
+------------------------------------
+- queue_penalty: mean(q)^2 -> mean(q^2). Jensen: mean(q^2) >= mean(q)^2 with
+  equality only for uniform queues — a single starved/saturated lane can no
+  longer hide behind a low average (anti-starvation).
+- pressure_penalty: one-sided max(red-green, 0) -> SIGNED
+  (sum_red - sum_green) / n_total in [-1, 1]. With a negative weight the
+  agent is penalised for holding green on the emptier side AND rewarded for
+  serving the more congested side — restoring gradient on correct decisions.
+- throughput_reward: global network arrival delta (split across agents,
+  high variance, diluted credit) -> LOCAL per-agent lane-exit count from
+  per-lane vehicle-ID set differences. This also aligns training exactly
+  with the documented vision proxy (ROI exit events). The global-delta path
+  is kept as an automatic fallback when lane vehicle IDs are unavailable.
 
 Sim-to-real alignment (SUMO → YOLO + ByteTrack)
 ------------------------------------------------
 queue_penalty      effective_queue_norm  → halted-vehicle fraction in ROI
 pressure_penalty   effective_queue_norm  → same, partitioned by phase group
-throughput_reward  delta_passed          → track IDs exiting ROI per step
+throughput_reward  lane vehicle-ID exits → track IDs exiting ROI per step
 switch_penalty     action logic          → no vision dependency
 waiting_penalty    waiting_time_norm     → fallback: effective_queue_norm
 """
@@ -67,15 +84,20 @@ class RewardCalculator:
     last_reward_details: Dict[str, Dict[str, float]] = field(
         default_factory=dict, init=False
     )
+    # per-lane vehicle-ID sets from the previous step (local throughput, 1.2.0)
+    _prev_lane_vehicle_ids: Dict[str, frozenset] = field(
+        default_factory=dict, init=False
+    )
 
     def __post_init__(self) -> None:
         self.config.validate()
         self.reset()
 
     def reset(self, prev_passed_total: float = 0.0) -> None:
-        """Reset internal throughput tracker between episodes."""
+        """Reset internal throughput trackers between episodes."""
         self._prev_passed_total = float(prev_passed_total)
         self.last_reward_details = {}
+        self._prev_lane_vehicle_ids = {}
 
     # ------------------------------------------------------------------
     # Public API
@@ -118,6 +140,19 @@ class RewardCalculator:
         throughput_delta = self._resolve_throughput_delta(action_info)
         switch_counts    = self._resolve_switch_counts(tls_ids, action_info)
 
+        # 1.2.0: snapshot current per-lane vehicle-ID sets (local throughput).
+        # has_lane_ids is False when the cache carries no ID data (e.g. unit
+        # tests with synthetic metrics) -> global-delta fallback is used.
+        current_ids_by_lane: Dict[str, frozenset] = {}
+        for tls_id in tls_ids:
+            for lane_id in lane_ids_by_tls.get(tls_id, ()):
+                if lane_id in current_ids_by_lane:
+                    continue
+                raw_ids = lane_cache.get(lane_id, {}).get("vehicle_ids")
+                if raw_ids is not None:
+                    current_ids_by_lane[lane_id] = frozenset(str(v) for v in raw_ids)
+        has_lane_ids = bool(current_ids_by_lane)
+
         rewards: RewardDict = {}
         details: Dict[str, Dict[str, float]] = {}
 
@@ -128,7 +163,10 @@ class RewardCalculator:
 
             queue_p      = self._compute_queue_penalty(tls_id, lane_ids, lane_cache)
             pressure_p   = self._compute_pressure_penalty(tls_id, green_ids, red_ids, lane_cache)
-            throughput_r = self._compute_throughput_reward(tls_id, throughput_delta, len(tls_ids))
+            if has_lane_ids:
+                throughput_r = self._compute_local_throughput(tls_id, lane_ids, current_ids_by_lane)
+            else:
+                throughput_r = self._compute_throughput_reward(tls_id, throughput_delta, len(tls_ids))
             switch_p     = self._compute_switch_penalty(tls_id, switch_counts)
             low_speed_p  = self._compute_low_speed_penalty(tls_id, lane_ids, lane_cache)
             waiting_p    = self._compute_waiting_penalty(tls_id, lane_ids, lane_cache)
@@ -168,6 +206,9 @@ class RewardCalculator:
                 switch_p, low_speed_p, waiting_p,
             )
 
+        if has_lane_ids:
+            self._prev_lane_vehicle_ids = current_ids_by_lane
+
         self.last_reward_details = details
         return rewards
 
@@ -183,12 +224,13 @@ class RewardCalculator:
     ) -> float:
         """Nonlinear congestion penalty across all controlled lanes.
 
-        Formula: ``mean(effective_queue_norm) ** 2``
-
-        Squaring amplifies sustained high queues while keeping the output in
-        [0, 1].  Compared to a linear formulation this provides stronger
-        gradient signal during heavy congestion and near-zero signal during
-        free-flow, matching PRESSLIGHT's saturation-aware design.
+        Formula (1.2.0): ``mean(effective_queue_norm ** 2)``  — mean of
+        squares, NOT square of the mean. By Jensen's inequality
+        mean(q^2) >= mean(q)^2 with equality only when all lanes are equal,
+        so one saturated lane among many empty ones is penalised heavily
+        instead of being averaged away (anti-starvation guard). Output stays
+        in [0, 1] and keeps the near-zero free-flow / strong-congestion
+        gradient profile of the previous formulation.
 
         Returns
         -------
@@ -202,9 +244,11 @@ class RewardCalculator:
             self._safe_metric(lane_cache.get(lid, {}), "effective_queue_norm")
             for lid in lane_ids
         ]
-        mean_q = float(np.mean(q_vals))
-        result = float(np.clip(mean_q ** 2, 0.0, 1.0))
-        logger.debug("[%s] queue_penalty=%.4f (mean_q=%.4f)", tls_id, result, mean_q)
+        result = float(np.clip(np.mean(np.square(q_vals)), 0.0, 1.0))
+        logger.debug(
+            "[%s] queue_penalty=%.4f (mean_q=%.4f)",
+            tls_id, result, float(np.mean(q_vals)),
+        )
         return result
 
     def _compute_pressure_penalty(
@@ -214,20 +258,25 @@ class RewardCalculator:
         red_lane_ids: Optional[Sequence[str]],
         lane_cache: LaneCache,
     ) -> float:
-        """Phase-aware queue-imbalance penalty (PRESSLIGHT / CoLight).
+        """SIGNED phase-aware queue-imbalance term (1.2.0, PRESSLIGHT-inspired).
 
         Pressure = (Σ queue_norm over red lanes − Σ queue_norm over green lanes)
-                   / total_lanes
+                   / total_lanes              ∈ [-1, 1]
 
-        A positive value means the currently-red lanes carry more queue than
-        the green lanes — the policy is holding green on the wrong direction.
-        The division by total lane count keeps the output in [0, 1].
+        Positive  → the currently-red lanes carry more queue than the green
+                    ones: green is being held on the wrong direction. With
+                    the negative weight (-0.5) this is a penalty.
+        Negative  → green is correctly serving the more congested side; the
+                    negative weight turns this into a positive reward, giving
+                    gradient on CORRECT decisions too (the previous one-sided
+                    max(·, 0) form was silent whenever allocation was right).
 
-        Returns 0.0 when phase-lane information is absent from ``action_info``.
+        Returns 0.0 (neutral) when phase-lane information is absent from
+        ``action_info``.
 
         Returns
         -------
-        float in [0, 1]
+        float in [-1, 1]
         """
         if not green_lane_ids or not red_lane_ids:
             logger.debug("[%s] pressure_penalty: phase lanes unavailable → 0.0", tls_id)
@@ -242,11 +291,43 @@ class RewardCalculator:
             for lid in red_lane_ids
         )
         n_total = max(len(green_lane_ids) + len(red_lane_ids), 1)
-        result  = float(max((sum_red - sum_green) / n_total, 0.0))
+        result  = float(np.clip((sum_red - sum_green) / n_total, -1.0, 1.0))
         logger.debug(
             "[%s] pressure_penalty=%.4f (red=%.3f green=%.3f n=%d)",
             tls_id, result, sum_red, sum_green, n_total,
         )
+        return result
+
+    def _compute_local_throughput(
+        self,
+        tls_id: str,
+        lane_ids: Sequence[str],
+        current_ids_by_lane: Mapping[str, frozenset],
+    ) -> float:
+        """LOCAL per-agent throughput from lane vehicle-ID exits (1.2.0).
+
+        exits = Σ over this agent's lanes of |prev_step_ids \\ current_ids| —
+        vehicles that left the approach lane since the last decision step
+        (crossed the stop line, modulo lane-change noise). Normalised by
+        ``throughput_norm_divisor`` and clipped to [0, 1]. No cross-agent
+        splitting: each agent is credited only for traffic it served, which
+        is also exactly the deployable vision proxy (ByteTrack ROI exits).
+
+        Returns
+        -------
+        float in [0, 1]
+        """
+        exits = 0
+        for lane_id in lane_ids:
+            prev = self._prev_lane_vehicle_ids.get(lane_id)
+            if prev is None:
+                continue
+            cur = current_ids_by_lane.get(lane_id, frozenset())
+            exits += len(prev - cur)
+
+        norm = exits / max(self.config.reward.throughput_norm_divisor, 1.0)
+        result = float(np.clip(norm, 0.0, 1.0))
+        logger.debug("[%s] local_throughput=%.4f (exits=%d)", tls_id, result, exits)
         return result
 
     def _compute_throughput_reward(
@@ -255,11 +336,13 @@ class RewardCalculator:
         throughput_delta: float,
         num_tls: int,
     ) -> float:
-        """Cooperative cleared-vehicles reward, shared across all agents.
+        """FALLBACK global cleared-vehicles reward (pre-1.2.0 behaviour).
 
-        The global throughput increment is split equally so each agent
-        receives a proportional cooperative signal while preventing
-        free-riding.  Normalised by ``config.reward.throughput_norm_divisor``.
+        Used only when the lane cache carries no per-lane vehicle IDs (e.g.
+        synthetic test fixtures or external callers). The global throughput
+        increment is split equally across agents — high variance and diluted
+        credit; prefer the local path. Normalised by
+        ``config.reward.throughput_norm_divisor``.
 
         Returns
         -------

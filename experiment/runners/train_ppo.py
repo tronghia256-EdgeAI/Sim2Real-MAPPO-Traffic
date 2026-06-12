@@ -2,6 +2,21 @@ from __future__ import annotations
 
 """Clean MAPPO training script for SUMO traffic control.
 
+PATCH NOTES (audit v3 — schema 1.1.0):
+- MAPPO CREDIT ASSIGNMENT: the critic now has one value head per agent and
+  GAE/advantages are computed PER AGENT from that agent's own shaped reward
+  stream (previously: scalar team-mean reward + a single shared advantage,
+  which erased the per-agent reward design in rewards.py). Advantages are
+  normalized jointly across agents to keep a common scale for the shared actor.
+  The actor remains parameter-shared across agents (standard MAPPO).
+- FIX: eval_max_steps default 400 -> 1080. 400 truncated evaluation at 37% of
+  the 1080-step episode, biasing all reported metrics toward warm-up traffic.
+- FIX: TrainConfig.rollout_horizon default aligned to the CLI default (128).
+- BREAKING: checkpoints saved before v3 have a scalar critic head and a
+  pre-1.1.0 observation schema (truncated lanes, unsigned pressure, J2 lane
+  group bug) — they cannot be resumed or evaluated with this code. See
+  models/mappo/20260418_215140/LEGACY_REWARD_NOTICE.md.
+
 PATCH NOTES (audit v2):
 - FIX: clip_range_vf missing type annotation (was class var, not a dataclass field).
 - FIX: value loss clipping now uses clip_range_vf, not clip_ratio.
@@ -23,21 +38,57 @@ import json
 import math
 import os
 import random
+import sys
 import time
 from dataclasses import asdict, dataclass
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Dict, List, Sequence, Tuple
+from typing import Any, Dict, List, Optional, Sequence, Tuple
+
+# repo convention (see NOTES.md §3): scripts add the project root to sys.path
+# so `python experiment/runners/train_ppo.py` works without pip install -e.
+_ROOT = Path(__file__).resolve().parents[2]
+if str(_ROOT) not in sys.path:
+    sys.path.insert(0, str(_ROOT))
 
 import numpy as np
 import torch
 import torch.nn as nn
 import torch.optim as optim
 from torch.distributions import Categorical
-from torch.utils.tensorboard import SummaryWriter
 
-from src.traffic_env.config import build_default_config
+# TensorBoard is optional: on some machines torch.utils.tensorboard pulls in a
+# broken TensorFlow build (NumPy 2.x ABI clash). CSV logging always works.
+try:
+    from torch.utils.tensorboard import SummaryWriter  # type: ignore
+    _TB_IMPORT_ERROR: Optional[Exception] = None
+except Exception as _tb_exc:  # pragma: no cover
+    SummaryWriter = None  # type: ignore[assignment]
+    _TB_IMPORT_ERROR = _tb_exc
+
+from src.traffic_env.config import build_default_config, load_lane_groups_json
 from src.traffic_env.envs.multi_agent import MappoTrafficEnv
+
+
+class _NoopWriter:
+    """Drop-in writer used when TensorBoard cannot be imported."""
+
+    def add_scalar(self, *args: Any, **kwargs: Any) -> None:
+        pass
+
+    def close(self) -> None:
+        pass
+
+
+def make_writer(log_dir: str) -> Any:
+    if SummaryWriter is None:
+        print(
+            f"[WARN] TensorBoard unavailable ({_TB_IMPORT_ERROR!r}) — falling back "
+            f"to CSV-only logging. Fix: pip install \"numpy<2\" or remove the "
+            f"broken tensorflow install."
+        )
+        return _NoopWriter()
+    return SummaryWriter(log_dir=log_dir)
 
 
 # ---------------------------------------------------------------------
@@ -47,7 +98,7 @@ from src.traffic_env.envs.multi_agent import MappoTrafficEnv
 class TrainConfig:
     seed: int = 42
     total_timesteps: int = 500_000
-    rollout_horizon: int = 256           # matched to CLI default
+    rollout_horizon: int = 128           # FIX v3: actually matched to CLI default
 
     gamma: float = 0.99
     gae_lambda: float = 0.95
@@ -75,7 +126,7 @@ class TrainConfig:
     save_latest_every_updates: int = 1
 
     eval_episodes: int = 5
-    eval_max_steps: int = 400
+    eval_max_steps: int = 1080           # FIX v3: full episode (was 400 = 37% of episode)
 
     device: str = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -251,18 +302,54 @@ class Actor(nn.Module):
 
 
 class Critic(nn.Module):
-    def __init__(self, state_dim: int, hidden_dim: int = 256) -> None:
+    """Centralized critic with one value head per agent (MAPPO v3).
+
+    Output shape (B, num_agents): head i estimates agent i's return from the
+    global state, enabling per-agent GAE on per-agent shaped rewards.
+    """
+
+    def __init__(self, state_dim: int, num_agents: int = 1, hidden_dim: int = 256) -> None:
         super().__init__()
+        self.num_agents = int(num_agents)
         self.net = nn.Sequential(
             layer_init(nn.Linear(state_dim, hidden_dim)),
             nn.ReLU(),
             layer_init(nn.Linear(hidden_dim, hidden_dim)),
             nn.ReLU(),
-            layer_init(nn.Linear(hidden_dim, 1), std=1.0),
+            layer_init(nn.Linear(hidden_dim, self.num_agents), std=1.0),
         )
 
     def forward(self, state: torch.Tensor) -> torch.Tensor:
-        return self.net(state).squeeze(-1)
+        return self.net(state)
+
+
+class IndependentCritics(nn.Module):
+    """IPPO baseline: one fully independent critic per agent.
+
+    Each head consumes ONLY that agent's local 26-dim approach-aggregated
+    observation — no global state, no parameter sharing between critics.
+    Output shape (B, num_agents), same contract as the centralized Critic,
+    so the PPO update path is identical for both algorithms.
+    """
+
+    def __init__(self, obs_dim: int, num_agents: int, hidden_dim: int = 256) -> None:
+        super().__init__()
+        self.num_agents = int(num_agents)
+        self.nets = nn.ModuleList(
+            nn.Sequential(
+                layer_init(nn.Linear(obs_dim, hidden_dim)),
+                nn.ReLU(),
+                layer_init(nn.Linear(hidden_dim, hidden_dim)),
+                nn.ReLU(),
+                layer_init(nn.Linear(hidden_dim, 1), std=1.0),
+            )
+            for _ in range(self.num_agents)
+        )
+
+    def forward(self, obs_per_agent: torch.Tensor) -> torch.Tensor:
+        """obs_per_agent: (B, num_agents, obs_dim) -> values (B, num_agents)."""
+        outs = [net(obs_per_agent[:, i, :]) for i, net in enumerate(self.nets)]
+        return torch.cat(outs, dim=-1)
 
 
 # ---------------------------------------------------------------------
@@ -277,8 +364,8 @@ class StepRecord:
     reward_dict: Dict[str, float]
     terminated_dict: Dict[str, bool]
     truncated_dict: Dict[str, bool]
-    value: float
-    team_reward: float
+    value: np.ndarray          # v3: per-agent value vector, shape (num_agents,)
+    team_reward: float         # kept for logging only
 
 
 class RolloutBuffer:
@@ -321,13 +408,17 @@ class RolloutBuffer:
             "advantages": np.asarray(adv_list, dtype=np.float32),
         }
 
-    def critic_flatten(self, team_returns: np.ndarray) -> Dict[str, np.ndarray]:
+    def critic_flatten(self, returns_mat: np.ndarray) -> Dict[str, np.ndarray]:
+        """returns_mat: per-agent returns, shape (T, num_agents)."""
         states = [np.asarray(rec.global_state, dtype=np.float32).reshape(-1) for rec in self.records]
-        values = np.asarray([rec.value for rec in self.records], dtype=np.float32)
+        values = np.stack(
+            [np.asarray(rec.value, dtype=np.float32).reshape(-1) for rec in self.records],
+            axis=0,
+        )  # (T, num_agents)
         return {
             "states": np.asarray(states, dtype=np.float32),
             "values": values,
-            "team_returns": np.asarray(team_returns, dtype=np.float32),
+            "returns": np.asarray(returns_mat, dtype=np.float32),
         }
 
 
@@ -358,10 +449,22 @@ def compute_gae(
 # Environment helpers
 # ---------------------------------------------------------------------
 def make_env(args: argparse.Namespace) -> Tuple[MappoTrafficEnv, Any]:
+    # scaled networks (n2_corridor, n3_grid, ...) ship a lane_groups.json that
+    # provides both the TLS roster and the phase-group partition; explicit
+    # --tls-ids still wins if given.
+    tls_ids: Optional[Tuple[str, ...]] = tuple(args.tls_ids) if args.tls_ids else None
+    manual_lane_groups = None
+    lane_groups_path = getattr(args, "lane_groups", None)
+    if lane_groups_path:
+        json_tls_ids, manual_lane_groups = load_lane_groups_json(lane_groups_path)
+        if tls_ids is None:
+            tls_ids = json_tls_ids
+
     env_cfg = build_default_config(
         sumo_cfg_path=args.sumo_cfg,
         gui=args.gui,
-        tls_ids=tuple(args.tls_ids) if args.tls_ids else None,
+        tls_ids=tls_ids,
+        manual_lane_groups=manual_lane_groups,
         max_lanes_per_tls=args.max_lanes_per_tls,
         step_length=args.step_length,
         yellow_time=args.yellow_time,
@@ -433,8 +536,14 @@ def train(args: argparse.Namespace) -> None:
     obs_dict, info_dict = env.reset(seed=train_cfg.seed)
     action_dim: int = getattr(env, "action_dim", 2)
 
+    algo = str(getattr(args, "algo", "mappo")).lower()
     actor = Actor(obs_dim, action_dim).to(device)
-    critic = Critic(state_dim).to(device)
+    if algo == "ippo":
+        # IPPO: decentralized critics — each value head sees ONLY its agent's
+        # local obs. Actor parameter sharing stays active (same as MAPPO).
+        critic: nn.Module = IndependentCritics(obs_dim, num_agents=len(tls_ids)).to(device)
+    else:
+        critic = Critic(state_dim, num_agents=len(tls_ids)).to(device)
 
     actor_optim = optim.Adam(actor.parameters(), lr=train_cfg.policy_lr, eps=1e-5)
     critic_optim = optim.Adam(critic.parameters(), lr=train_cfg.value_lr, eps=1e-5)
@@ -450,11 +559,14 @@ def train(args: argparse.Namespace) -> None:
     obs_rms = RunningMeanStd((obs_dim,))
     state_rms = RunningMeanStd((state_dim,))
 
-    writer = SummaryWriter(log_dir=log_dir)
+    writer = make_writer(log_dir)
     csv_logger = CsvLogger(log_dir)
 
     run_meta = {
         "run_id": run_id,
+        "algo": algo,
+        "critic_arch": "independent_local" if algo == "ippo" else "central_multihead",
+        "lane_groups_file": getattr(args, "lane_groups", None),
         "env_cfg": env_cfg.to_dict(),
         "train_cfg": asdict(train_cfg),
         "tls_ids": tls_ids,
@@ -504,17 +616,14 @@ def train(args: argparse.Namespace) -> None:
         critic.eval()
 
         for _ in range(train_cfg.rollout_horizon):
-            norm_state = state_rms.normalize(global_state)
-            state_tensor = torch.as_tensor(norm_state, dtype=torch.float32, device=device).unsqueeze(0)
-            with torch.no_grad():
-                value = float(critic(state_tensor).item())
-
             action_dict: Dict[str, int] = {}
             logprob_dict: Dict[str, float] = {}
+            norm_obs_rows: List[np.ndarray] = []
 
             for tls_id in tls_ids:
                 obs = np.asarray(obs_dict[tls_id], dtype=np.float32).reshape(-1)
                 norm_obs = obs_rms.normalize(obs)
+                norm_obs_rows.append(norm_obs)
                 obs_tensor = torch.as_tensor(norm_obs, dtype=torch.float32, device=device).unsqueeze(0)
                 with torch.no_grad():
                     dist = actor.distribution(obs_tensor)
@@ -523,6 +632,19 @@ def train(args: argparse.Namespace) -> None:
 
                 action_dict[tls_id] = int(action.item())
                 logprob_dict[tls_id] = float(logprob.item())
+
+            with torch.no_grad():
+                if algo == "ippo":
+                    obs_all_t = torch.as_tensor(
+                        np.stack(norm_obs_rows, axis=0), dtype=torch.float32, device=device
+                    ).unsqueeze(0)  # (1, N, obs_dim)
+                    value = critic(obs_all_t).squeeze(0).cpu().numpy().astype(np.float32)
+                else:
+                    norm_state = state_rms.normalize(global_state)
+                    state_tensor = torch.as_tensor(
+                        norm_state, dtype=torch.float32, device=device
+                    ).unsqueeze(0)
+                    value = critic(state_tensor).squeeze(0).cpu().numpy().astype(np.float32)
 
             next_obs_dict, reward_dict, terminated_dict, truncated_dict, next_info_dict = env.step(action_dict)
             next_global_state = extract_global_state(next_info_dict, fallback=global_state)
@@ -640,41 +762,70 @@ def train(args: argparse.Namespace) -> None:
         actor.eval()
         critic.eval()
         with torch.no_grad():
-            norm_last = state_rms.normalize(global_state)
-            last_state_tensor = torch.as_tensor(norm_last, dtype=torch.float32, device=device).unsqueeze(0)
-            last_value = float(critic(last_state_tensor).item())
+            if algo == "ippo":
+                last_obs_rows = np.stack(
+                    [
+                        obs_rms.normalize(np.asarray(obs_dict[t], dtype=np.float32).reshape(-1))
+                        for t in tls_ids
+                    ],
+                    axis=0,
+                )
+                last_in = torch.as_tensor(last_obs_rows, dtype=torch.float32, device=device).unsqueeze(0)
+            else:
+                norm_last = state_rms.normalize(global_state)
+                last_in = torch.as_tensor(norm_last, dtype=torch.float32, device=device).unsqueeze(0)
+            last_values = critic(last_in).squeeze(0).cpu().numpy().astype(np.float32)
 
         last_record = buffer.records[-1]
         if any(last_record.terminated_dict.values()) or any(last_record.truncated_dict.values()):
-            last_value = 0.0
+            last_values = np.zeros_like(last_values)
 
         # --------------------------------------------------
-        # GAE
+        # GAE — v3: per-agent advantages from per-agent shaped rewards
+        # and per-agent value heads (episode boundaries are shared).
         # --------------------------------------------------
-        team_rewards = np.asarray([rec.team_reward for rec in buffer.records], dtype=np.float32)
-        team_values = np.asarray([rec.value for rec in buffer.records], dtype=np.float32)
-        team_dones = np.asarray([
+        dones = np.asarray([
             float(any(rec.terminated_dict.values()) or any(rec.truncated_dict.values()))
             for rec in buffer.records
         ], dtype=np.float32)
 
-        team_adv, team_returns = compute_gae(
-            rewards=team_rewards,
-            values=team_values,
-            dones=team_dones,
-            last_value=last_value,
-            gamma=train_cfg.gamma,
-            gae_lambda=train_cfg.gae_lambda,
-        )
+        rewards_mat = np.asarray(
+            [[rec.reward_dict.get(tls_id, 0.0) for tls_id in tls_ids] for rec in buffer.records],
+            dtype=np.float32,
+        )  # (T, N)
+        values_mat = np.stack(
+            [np.asarray(rec.value, dtype=np.float32).reshape(-1) for rec in buffer.records],
+            axis=0,
+        )  # (T, N)
 
-        team_adv_norm = (team_adv - team_adv.mean()) / (team_adv.std() + 1e-8)
+        adv_cols: List[np.ndarray] = []
+        ret_cols: List[np.ndarray] = []
+        for agent_idx in range(len(tls_ids)):
+            adv_i, ret_i = compute_gae(
+                rewards=rewards_mat[:, agent_idx],
+                values=values_mat[:, agent_idx],
+                dones=dones,
+                last_value=float(last_values[agent_idx]),
+                gamma=train_cfg.gamma,
+                gae_lambda=train_cfg.gae_lambda,
+            )
+            adv_cols.append(adv_i)
+            ret_cols.append(ret_i)
+
+        adv_mat = np.stack(adv_cols, axis=1)        # (T, N)
+        returns_mat = np.stack(ret_cols, axis=1)    # (T, N)
+
+        # joint normalization keeps a single advantage scale for the shared actor
+        adv_flat = adv_mat.reshape(-1)
+        adv_mat_norm = (adv_mat - adv_flat.mean()) / (adv_flat.std() + 1e-8)
 
         advantages_by_tls: Dict[str, np.ndarray] = {
-            tls_id: team_adv_norm.copy() for tls_id in tls_ids
+            tls_id: np.ascontiguousarray(adv_mat_norm[:, agent_idx])
+            for agent_idx, tls_id in enumerate(tls_ids)
         }
 
         actor_flat = buffer.actor_flatten(advantages_by_tls)
-        critic_flat = buffer.critic_flatten(team_returns=team_returns)
+        critic_flat = buffer.critic_flatten(returns_mat=returns_mat)
 
         actor_flat["obs"] = obs_rms.normalize(actor_flat["obs"])
         critic_flat["states"] = state_rms.normalize(critic_flat["states"])
@@ -684,9 +835,23 @@ def train(args: argparse.Namespace) -> None:
         old_logprob_t = torch.as_tensor(actor_flat["logprobs"], dtype=torch.float32, device=device)
         adv_t = torch.as_tensor(actor_flat["advantages"], dtype=torch.float32, device=device)
 
-        state_t = torch.as_tensor(critic_flat["states"], dtype=torch.float32, device=device)
-        old_value_t = torch.as_tensor(critic_flat["values"], dtype=torch.float32, device=device)
-        ret_t = torch.as_tensor(critic_flat["team_returns"], dtype=torch.float32, device=device)
+        # critic input: MAPPO -> normalized global state (T, S);
+        # IPPO -> per-agent normalized local obs (T, N, obs_dim). actor_flat
+        # obs is agent-major [(agent0 t0..T-1), (agent1 ...)], already
+        # normalized above — reshape instead of re-normalizing.
+        if algo == "ippo":
+            T_steps = len(buffer)
+            critic_in = (
+                actor_flat["obs"]
+                .reshape(len(tls_ids), T_steps, obs_dim)
+                .transpose(1, 0, 2)
+            )  # (T, N, obs_dim)
+        else:
+            critic_in = critic_flat["states"]
+
+        state_t = torch.as_tensor(critic_in, dtype=torch.float32, device=device)
+        old_value_t = torch.as_tensor(critic_flat["values"], dtype=torch.float32, device=device)   # (T, N)
+        ret_t = torch.as_tensor(critic_flat["returns"], dtype=torch.float32, device=device)        # (T, N)
 
         # --------------------------------------------------
         # PPO update
@@ -781,7 +946,9 @@ def train(args: argparse.Namespace) -> None:
         # Logging
         # --------------------------------------------------
         sps = int(global_step / max(time.time() - start_time, 1e-8))
-        ev = explained_variance(critic_flat["values"], team_returns)
+        ev = explained_variance(
+            critic_flat["values"].reshape(-1), returns_mat.reshape(-1)
+        )
 
         writer.add_scalar("charts/SPS", sps, global_step)
         writer.add_scalar("loss/policy", float(np.mean(policy_losses)), global_step)
@@ -794,8 +961,10 @@ def train(args: argparse.Namespace) -> None:
         writer.add_scalar("train/entropy_coef", entropy_coef, global_step)
         writer.add_scalar("train/actor_batch_size", batch_size_actor, global_step)
         writer.add_scalar("train/episode_count", episode_count, global_step)
-        writer.add_scalar("train/team_return_mean", float(np.mean(team_returns)), global_step)
-        writer.add_scalar("train/team_adv_mean", float(np.mean(team_adv)), global_step)
+        writer.add_scalar("train/return_mean", float(np.mean(returns_mat)), global_step)
+        writer.add_scalar("train/adv_mean", float(np.mean(adv_mat)), global_step)
+        for agent_idx, tls_id in enumerate(tls_ids):
+            writer.add_scalar(f"train/return_mean_{tls_id}", float(np.mean(returns_mat[:, agent_idx])), global_step)
 
         csv_logger.log_update(
             global_step=global_step,
@@ -864,7 +1033,38 @@ def train(args: argparse.Namespace) -> None:
 
     env.close()
     writer.close()
+
+    # ----- wall-clock benchmark summary (pilot instrumentation) -----
+    elapsed_s = time.time() - start_time
+    mean_sps = global_step / max(elapsed_s, 1e-9)
+    proj_2m_h = 2_000_000 / max(mean_sps, 1e-9) / 3600.0
+    bench = {
+        "run_id": run_id,
+        "algo": algo,
+        "num_agents": len(tls_ids),
+        "global_steps": global_step,
+        "episodes": episode_count,
+        "elapsed_seconds": round(elapsed_s, 1),
+        "mean_steps_per_second": round(mean_sps, 2),
+        "projected_hours_2M_steps": round(proj_2m_h, 2),
+        "projected_hours_2M_x5_seeds": round(proj_2m_h * 5, 2),
+        "device": train_cfg.device,
+        "ckpt_dir": ckpt_dir,
+        "log_dir": log_dir,
+    }
+    for save_dir in (log_dir, ckpt_dir):
+        with open(Path(save_dir) / "bench.json", "w", encoding="utf-8") as f:
+            json.dump(bench, f, indent=2)
+
     print(f"Training completed. Run dir: {ckpt_dir}")
+    print(
+        f"[BENCH] wall-clock {elapsed_s:.1f}s ({elapsed_s/3600:.2f}h) | "
+        f"steps {global_step} | mean SPS {mean_sps:.1f}"
+    )
+    print(
+        f"[BENCH] projected: 2M steps ~ {proj_2m_h:.1f}h | "
+        f"2M x 5 seeds ~ {proj_2m_h*5:.1f}h  (algo={algo}, agents={len(tls_ids)})"
+    )
 
 
 # ---------------------------------------------------------------------
@@ -1029,6 +1229,12 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Clean MAPPO trainer for SUMO traffic control")
 
     parser.add_argument("--mode", choices=["train", "eval", "multiseed_eval"], default="train")
+    parser.add_argument("--algo", choices=["mappo", "ippo"], default="mappo",
+                        help="mappo: centralized multi-head critic on global state; "
+                             "ippo: independent per-agent critics on local obs only")
+    parser.add_argument("--lane-groups", type=str, default=None,
+                        help="path to lane_groups.json (scaled networks); provides "
+                             "tls_ids + phase-group partition")
     parser.add_argument("--sumo-cfg", type=str, required=True)
     parser.add_argument("--checkpoint", type=str, default="models/mappo/20260418_215140/best_model.pt")
 
@@ -1051,7 +1257,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--save-every-steps", type=int, default=50_000)
     parser.add_argument("--save-latest-every-updates", type=int, default=1)
     parser.add_argument("--eval-episodes", type=int, default=5)
-    parser.add_argument("--eval-max-steps", type=int, default=400)
+    parser.add_argument("--eval-max-steps", type=int, default=1080,
+                        help="FIX v3: full 1080-step episode (was 400)")
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
     parser.add_argument("--gui", action="store_true")

@@ -156,6 +156,10 @@ _S_RED    = 0
 _S_YELLOW = 1
 _S_GREEN  = 2
 
+# Safe-mode thresholds
+SAFE_MODE_THRESHOLD = 0.25   # fraction of stale cameras that triggers safe mode
+SAFE_MODE_GREEN_SEC = 30.0   # seconds per phase in fixed-cycle fallback
+
 
 def _list_com_ports() -> List[str]:
     """Return sorted list of available COM ports; fallback to common names if pyserial absent."""
@@ -614,6 +618,9 @@ def show_camera_dashboard(
     target_fps: int,
     use_mappo: bool,
     mappo_path: str,
+    safe_mode_threshold: float = 0.25,
+    safe_mode_green_sec: float = 30.0,
+    force_safe_mode: bool = False,
 ) -> None:
     # ── load camera config ────────────────────────────────────────────────────
     cfg_path = Path(cam_cfg_path)
@@ -704,7 +711,8 @@ def show_camera_dashboard(
     inference_mode = "MAPPO" if use_mappo else "Simulated cycle"
     st.markdown(f"### Traffic Light Status  <small style='color:#64748b;font-size:0.8rem'>({inference_mode})</small>",
                 unsafe_allow_html=True)
-    tls_placeholder = st.empty()
+    tls_placeholder  = st.empty()
+    safe_mode_banner = st.empty()
 
     st.markdown("---")
     st.markdown("### Per-Intersection Traffic")
@@ -755,6 +763,9 @@ def show_camera_dashboard(
     frame_idx          = 0
     _last_serial_states: List[int] = []   # track last sent packet to avoid redundant sends
     _last_serial_send_t: float     = 0.0  # time of last send (for 1-second heartbeat)
+    _safe_mode_active:       bool  = False
+    _safe_mode_phase_start:  float = 0.0
+    _last_frame_times: Dict[int, float] = {i: time.perf_counter() for i in range(n_cams)}
 
     while True:
         t_start = time.perf_counter()
@@ -779,7 +790,9 @@ def show_camera_dashboard(
             if not ret:
                 cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
                 ret, frame = cap.read()
-            if not ret:
+            if ret:
+                _last_frame_times[cam_idx] = t_start
+            else:
                 frame = np.zeros((240, 320, 3), dtype=np.uint8)
 
             frame_sm = cv2.resize(frame, (320, 240))
@@ -850,85 +863,100 @@ def show_camera_dashboard(
                 ts["yellow_start"] = None
                 ts["phase_start"]  = _now  # reset hold timer on green start
 
-        # ── Layer 1: pressure from raw vehicle counts (works even with bad ROIs) ─
-        # phase_group A → phase 0 (N+S); phase_group B → phase 1 (E+W)
-        pressure_preferred: Dict[str, int] = {}
-        pressure_counts: Dict[str, Tuple[int, int]] = {}   # {tls_id: (cnt_a, cnt_b)}
-        for tls_id, groups in tls_phase_groups.items():
-            cnt_a = sum(
-                sum(1 for t in parsed_frames.get(ci, {}).get("tracks", [])
-                    if t.get("cls_id", -1) != 0)
-                for ci in groups.get("A", [])
-            )
-            cnt_b = sum(
-                sum(1 for t in parsed_frames.get(ci, {}).get("tracks", [])
-                    if t.get("cls_id", -1) != 0)
-                for ci in groups.get("B", [])
-            )
-            pressure_preferred[tls_id] = 0 if cnt_a >= cnt_b else 1
-            pressure_counts[tls_id] = (cnt_a, cnt_b)
+        # ── Stale camera check → SAFE MODE ───────────────────────────────────
+        _stale_count = sum(
+            1 for i, cap in enumerate(caps)
+            if cap is None or (t_start - _last_frame_times.get(i, 0.0)) > 5.0
+        )
+        _in_safe_mode = force_safe_mode or (
+            n_cams > 0 and _stale_count / n_cams > safe_mode_threshold
+        )
 
-        # ── Layer 2: MAPPO inference (optional, early-switch hint) ────────────
-        # Pressure veto: MAPPO cannot switch away from the busy direction
-        # if current side has >= PRESSURE_VETO_RATIO × the other side's count.
-        PRESSURE_VETO_RATIO = 2.0
-        if use_mappo and policy is not None and state_extractor is not None:
-            phase_map = {
-                tid: _PHASE_ACTION_MAP[ts["phase"]]
-                for tid, ts in tls_state.items()
-            }
-            green_timers = {
-                tid: _now - ts["phase_start"]
-                for tid, ts in tls_state.items()
-            }
-            try:
-                obs52   = state_extractor.build_state(parsed_frames, phase_map, green_timers)
-                actions = policy.predict(
-                    {"tls_0": obs52[0:26], "tls_1": obs52[26:52]},
-                    deterministic=True,
+        if _in_safe_mode:
+            # ── SAFE MODE: fixed-time cycling (safe_mode_green_sec / phase) ───
+            if not _safe_mode_active:
+                _safe_mode_active = True
+                _safe_mode_phase_start = time.perf_counter()
+            elif time.perf_counter() - _safe_mode_phase_start >= safe_mode_green_sec:
+                for _tid, _ts in tls_state.items():
+                    if _ts["yellow_start"] is None and _ts["next_phase"] is None:
+                        _ts["next_phase"]   = 1 - _ts["phase"]
+                        _ts["yellow_start"] = time.perf_counter()
+                _safe_mode_phase_start = time.perf_counter()
+        else:
+            if _safe_mode_active:
+                _safe_mode_active = False
+
+            # ── Layer 1: pressure from raw vehicle counts ─────────────────────
+            pressure_preferred: Dict[str, int] = {}
+            pressure_counts: Dict[str, Tuple[int, int]] = {}
+            for tls_id, groups in tls_phase_groups.items():
+                cnt_a = sum(
+                    sum(1 for t in parsed_frames.get(ci, {}).get("tracks", [])
+                        if t.get("cls_id", -1) != 0)
+                    for ci in groups.get("A", [])
                 )
-                for tid, new_act in actions.items():
-                    ts = tls_state[tid]
-                    green_held = _now - ts["phase_start"]
-                    if new_act == ts["phase"] or ts["yellow_start"] is not None:
-                        continue
-                    if green_held < MIN_GREEN_S:
-                        continue
-                    # Pressure veto: block switch if current phase is the busy side
-                    cnt_a, cnt_b = pressure_counts.get(tid, (0, 0))
-                    cnt_current = cnt_a if ts["phase"] == 0 else cnt_b
-                    cnt_other   = cnt_b if ts["phase"] == 0 else cnt_a
-                    if cnt_other > 0 and cnt_current >= PRESSURE_VETO_RATIO * cnt_other:
-                        continue   # MAPPO vetoed — busy side keeps green
-                    if cnt_current > 0 and cnt_other == 0:
-                        continue   # other side is empty — never switch
-                    ts["next_phase"]   = new_act
+                cnt_b = sum(
+                    sum(1 for t in parsed_frames.get(ci, {}).get("tracks", [])
+                        if t.get("cls_id", -1) != 0)
+                    for ci in groups.get("B", [])
+                )
+                pressure_preferred[tls_id] = 0 if cnt_a >= cnt_b else 1
+                pressure_counts[tls_id] = (cnt_a, cnt_b)
+
+            # ── Layer 2: MAPPO — primary controller ───────────────────────────
+            if use_mappo and policy is not None and state_extractor is not None:
+                _phase_map_m = {
+                    tid: _PHASE_ACTION_MAP[ts["phase"]]
+                    for tid, ts in tls_state.items()
+                }
+                _green_timers_m = {
+                    tid: _now - ts["phase_start"]
+                    for tid, ts in tls_state.items()
+                }
+                try:
+                    obs52 = state_extractor.build_state(
+                        parsed_frames, _phase_map_m, _green_timers_m
+                    )
+                    actions = policy.predict(
+                        {"tls_0": obs52[0:26], "tls_1": obs52[26:52]},
+                        deterministic=True,
+                    )
+                    for tid, new_act in actions.items():
+                        ts = tls_state[tid]
+                        green_held = _now - ts["phase_start"]
+                        if new_act == ts["phase"] or ts["yellow_start"] is not None:
+                            continue
+                        if green_held < MIN_GREEN_S:
+                            continue
+                        ts["next_phase"]   = new_act
+                        ts["yellow_start"] = time.perf_counter()
+                except Exception:
+                    pass
+
+            # ── Layer 3: pressure override (only when MAPPO is disabled) ──────
+            if not use_mappo:
+                _now3 = time.perf_counter()
+                for tls_id, pref_phase in pressure_preferred.items():
+                    ts = tls_state[tls_id]
+                    green_held = _now3 - ts["phase_start"]
+                    if (ts["yellow_start"] is None
+                            and ts["next_phase"] is None
+                            and pref_phase != ts["phase"]
+                            and green_held >= MIN_GREEN_S):
+                        ts["next_phase"]   = pref_phase
+                        ts["yellow_start"] = time.perf_counter()
+
+            # ── Layer 4: safety timer fallback ────────────────────────────────
+            _hold_s = _phase_hold_s if not use_mappo else _mappo_max_s
+            _now4   = time.perf_counter()
+            for tid, ts in tls_state.items():
+                green_held = _now4 - ts["phase_start"]
+                if (ts["yellow_start"] is None
+                        and ts["next_phase"] is None
+                        and green_held >= _hold_s):
+                    ts["next_phase"]   = 1 - ts["phase"]
                     ts["yellow_start"] = time.perf_counter()
-            except Exception:
-                pass
-
-        # ── Layer 3: pressure override (switch to busier side after MIN_GREEN_S) ─
-        _now = time.perf_counter()
-        for tls_id, pref_phase in pressure_preferred.items():
-            ts = tls_state[tls_id]
-            green_held = _now - ts["phase_start"]
-            if (ts["yellow_start"] is None
-                    and ts["next_phase"] is None
-                    and pref_phase != ts["phase"]
-                    and green_held >= MIN_GREEN_S):
-                ts["next_phase"]   = pref_phase
-                ts["yellow_start"] = time.perf_counter()
-
-        # ── Layer 4: autonomous safety timer (equal traffic / fallback) ────────
-        _hold_s = _phase_hold_s if not use_mappo else _mappo_max_s
-        _now    = time.perf_counter()
-        for tid, ts in tls_state.items():
-            green_held = _now - ts["phase_start"]
-            if (ts["yellow_start"] is None
-                    and ts["next_phase"] is None
-                    and green_held >= _hold_s):
-                ts["next_phase"]   = 1 - ts["phase"]
-                ts["yellow_start"] = time.perf_counter()
 
         # ── render TLS SVG ────────────────────────────────────────────────────
         display = {
@@ -939,6 +967,21 @@ def show_camera_dashboard(
             render_twin_intersection_html(display),
             unsafe_allow_html=True,
         )
+
+        # ── SAFE MODE banner ──────────────────────────────────────────────────
+        if _in_safe_mode:
+            _reason = "forced" if force_safe_mode else f"{_stale_count}/{n_cams} cameras stale"
+            safe_mode_banner.markdown(
+                f"<div style='background:linear-gradient(135deg,#d97706,#b45309);"
+                f"color:#ffffff;font-size:1rem;font-weight:700;padding:12px 20px;"
+                f"border-radius:10px;text-align:center;border-left:4px solid #fde68a;'>"
+                f"SAFE MODE &mdash; {_reason}"
+                f"&nbsp;|&nbsp; Fixed-cycle {safe_mode_green_sec:.0f}s/phase"
+                f"</div>",
+                unsafe_allow_html=True,
+            )
+        else:
+            safe_mode_banner.empty()
 
         # ── Arduino: send RYG command + update status strip ─────────────────
         _bridge = st.session_state.get("serial_bridge")
@@ -1018,8 +1061,11 @@ def show_camera_dashboard(
             accident_banner.empty()
 
         # ── status + phase progress bar ───────────────────────────────────────
-        _now_s     = time.perf_counter()
-        _hold_s    = _phase_hold_s if not use_mappo else _mappo_max_s
+        _now_s  = time.perf_counter()
+        _hold_s = (
+            safe_mode_green_sec if _in_safe_mode
+            else (_phase_hold_s if not use_mappo else _mappo_max_s)
+        )
         # Show progress of the intersection that has been green the longest
         _ph_elapsed = max(_now_s - ts["phase_start"] for ts in tls_state.values()
                           if ts["yellow_start"] is None)  if any(
@@ -1033,11 +1079,15 @@ def show_camera_dashboard(
         _p1 = tls_state["tls_1"]["phase"]
         _y0 = "Y" if tls_state["tls_0"]["yellow_start"] is not None else ("A" if _p0 == 0 else "B")
         _y1 = "Y" if tls_state["tls_1"]["yellow_start"] is not None else ("A" if _p1 == 0 else "B")
+        _ctrl_mode = (
+            f"SAFE MODE ({_stale_count}/{n_cams} stale)" if _in_safe_mode
+            else ("MAPPO" if use_mappo else "Simulated")
+        )
         status_text.caption(
             f"Frame {frame_idx + 1} | "
             f"tls_0: {_y0} | tls_1: {_y1} | "
             f"{'YOLO ON' if use_yolo else 'YOLO OFF'} | "
-            f"{'MAPPO' if use_mappo else 'Simulated'}"
+            f"{_ctrl_mode}"
         )
 
         # Frame-rate throttle
@@ -1432,6 +1482,37 @@ with st.sidebar:
             )
 
         st.markdown("---")
+        st.subheader("Safe Mode")
+        st.caption("Activates when too many cameras lose signal for >5 s.")
+
+        _sm_pct = st.slider(
+            "Trigger threshold",
+            min_value=10, max_value=75, value=25, step=5,
+            format="%d%%",
+            help="Safe mode activates when this % of cameras become stale.",
+            key="sm_threshold_pct",
+        )
+        safe_mode_threshold = _sm_pct / 100.0
+
+        safe_mode_green_sec = float(st.slider(
+            "Phase duration (s)",
+            min_value=10, max_value=90, value=30, step=5,
+            help="How long each phase lasts during fixed-cycle safe mode.",
+            key="sm_green_sec",
+        ))
+
+        force_safe_mode = st.checkbox(
+            "Force Safe Mode",
+            value=False,
+            help="Manually activate fixed-cycle control to test safe mode behaviour.",
+            key="sm_force",
+        )
+        if force_safe_mode:
+            st.warning("Safe Mode forced ON — MAPPO disabled.", icon="⚠️")
+        else:
+            st.caption("Status shown in main area during playback.")
+
+        st.markdown("---")
         run_btn = st.button("Play Cameras", type="primary", use_container_width=True)
 
     # ── Live Simulation controls ───────────────────────────────────────────────
@@ -1494,6 +1575,9 @@ if page == "Camera Dashboard":
             target_fps=target_fps,
             use_mappo=use_mappo,
             mappo_path=mappo_path,
+            safe_mode_threshold=safe_mode_threshold,
+            safe_mode_green_sec=safe_mode_green_sec,
+            force_safe_mode=force_safe_mode,
         )
     else:
         st.info(

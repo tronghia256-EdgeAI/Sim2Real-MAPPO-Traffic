@@ -23,7 +23,7 @@
     "vehicle_cap": 20,
     "max_green_time": 60,
     "px_per_meter": 20.0,
-    "stop_speed_m_s": 0.5,
+    "stop_speed_m_s": 0.1,
     "metrics_log_every": 20,
     "throughput_cap": 10,
     "vehicle_detection": {

@@ -1,0 +1,84 @@
+{
+  "schema_version": "1.1.0",
+  "network": "n2_corridor",
+  "tls_ids": [
+    "A0",
+    "B0",
+    "C0",
+    "D0",
+    "E0"
+  ],
+  "lane_groups": {
+    "A0": [
+      [
+        "bottom0A0_0",
+        "bottom0A0_1",
+        "top0A0_0",
+        "top0A0_1"
+      ],
+      [
+        "B0A0_0",
+        "B0A0_1",
+        "left0A0_0",
+        "left0A0_1"
+      ]
+    ],
+    "B0": [
+      [
+        "bottom1B0_0",
+        "bottom1B0_1",
+        "top1B0_0",
+        "top1B0_1"
+      ],
+      [
+        "A0B0_0",
+        "A0B0_1",
+        "C0B0_0",
+        "C0B0_1"
+      ]
+    ],
+    "C0": [
+      [
+        "bottom2C0_0",
+        "bottom2C0_1",
+        "top2C0_0",
+        "top2C0_1"
+      ],
+      [
+        "B0C0_0",
+        "B0C0_1",
+        "D0C0_0",
+        "D0C0_1"
+      ]
+    ],
+    "D0": [
+      [
+        "bottom3D0_0",
+        "bottom3D0_1",
+        "top3D0_0",
+        "top3D0_1"
+      ],
+      [
+        "C0D0_0",
+        "C0D0_1",
+        "E0D0_0",
+        "E0D0_1"
+      ]
+    ],
+    "E0": [
+      [
+        "bottom4E0_0",
+        "bottom4E0_1",
+        "top4E0_0",
+        "top4E0_1"
+      ],
+      [
+        "D0E0_0",
+        "D0E0_1",
+        "right0E0_0",
+        "right0E0_1"
+      ]
+    ]
+  },
+  "note": "group_a = lanes green in the first green phase of the TLS program; group_b = second green phase. Derived by scripts/generate_networks.py; validated against the net topology (CHECK 6 invariants)."
+}

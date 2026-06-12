@@ -5,13 +5,16 @@ Verify that the YOLO-based production pipeline (StateExtractor) and the
 SUMO training pipeline (ObservationBuilder) produce matching observation
 vectors.
 
-Four levels of checks:
+Five levels of checks:
   1. STRUCTURAL  — obs_dim, feature names, feature order, normalization caps.
   2. ASSEMBLY    — inject identical lane-metric dicts into both pipelines;
                    output MUST be bit-for-bit identical.
   3. METRIC      — feed synthetic YOLO tracks through StateExtractor AND
                    VisionLaneMetrics; compare per-feature values.
   4. PARAMETERS  — cross-check normalization constants across all config sources.
+  6. TOPOLOGY    — assert DEFAULT_MANUAL_LANE_GROUPS lanes actually approach
+                   their own TLS junction in every SUMO net file (S3 guard),
+                   groups are disjoint, and no lane is claimed by two TLS.
 
 Optional:
   5. SUMO LIVE   — run a short SUMO episode and compare obs vectors at each step.
@@ -41,6 +44,7 @@ from src.traffic_env.components.observations import ObservationBuilder, VisionLa
 from src.traffic_env.config import (
     build_default_config,
     DEFAULT_LANE_FEATURE_NAMES,
+    DEFAULT_MANUAL_LANE_GROUPS,
     DEFAULT_TLS_FEATURE_NAMES,
 )
 
@@ -590,6 +594,132 @@ def check_parameter_alignment() -> int:
 
 
 # ══════════════════════════════════════════════════════════════════════════════
+# CHECK 6 — LANE-GROUP / NET TOPOLOGY CONSISTENCY (S3 regression guard)
+# ══════════════════════════════════════════════════════════════════════════════
+
+def _validate_lane_groups_on_net(
+    net_path: Path,
+    groups: Dict[str, Tuple[List[str], List[str]]],
+    label: str,
+) -> int:
+    """Validate one (net, lane_groups) pair. Returns failure count.
+
+      a. every lane belongs to an edge whose 'to' junction IS that TLS;
+      b. group_a / group_b disjoint and non-empty per TLS;
+      c. no lane claimed by two different TLS.
+    """
+    import xml.etree.ElementTree as ET
+
+    failures = 0
+
+    # b + c (net-independent invariants)
+    lane_owner: Dict[str, str] = {}
+    for tls_id, (group_a, group_b) in groups.items():
+        overlap = set(group_a) & set(group_b)
+        if overlap:
+            _row(False, f"{label}: {tls_id} groups disjoint",
+                 f"shared lanes: {sorted(overlap)}")
+            failures += 1
+        if not group_a or not group_b:
+            _row(False, f"{label}: {tls_id} groups non-empty", "empty group found")
+            failures += 1
+        for lane_id in list(group_a) + list(group_b):
+            prev = lane_owner.get(lane_id)
+            if prev is not None and prev != tls_id:
+                _row(False, f"{label}: cross-TLS duplicate lane",
+                     f"{lane_id} claimed by both {prev} and {tls_id}")
+                failures += 1
+            lane_owner[lane_id] = tls_id
+
+    # a (direction check against the net)
+    try:
+        root = ET.parse(net_path).getroot()
+    except Exception as exc:
+        _row(False, f"{label}: parse {net_path.name}", str(exc))
+        return failures + 1
+
+    edge_to: Dict[str, str] = {}
+    for edge in root.iter("edge"):
+        if edge.get("function") == "internal":
+            continue
+        edge_id = edge.get("id")
+        to_junction = edge.get("to")
+        if edge_id and to_junction:
+            edge_to[edge_id] = to_junction
+
+    net_failures = 0
+    for tls_id, (group_a, group_b) in groups.items():
+        for lane_id in list(group_a) + list(group_b):
+            edge_id = lane_id.rsplit("_", 1)[0] if "_" in lane_id else lane_id
+            to_junction = edge_to.get(edge_id)
+            if to_junction is None:
+                _row(False, f"{label}: {tls_id} lane {lane_id}",
+                     f"edge {edge_id!r} not found in net")
+                net_failures += 1
+            elif to_junction != tls_id:
+                _row(False, f"{label}: {tls_id} lane {lane_id}",
+                     f"edge {edge_id} approaches junction {to_junction}, "
+                     f"expected {tls_id}  <- S3-class topology bug")
+                net_failures += 1
+
+    if net_failures == 0 and failures == 0:
+        _row(True, f"{label}", f"{len(groups)} TLS, all group lanes approach their own junction")
+    return failures + net_failures
+
+
+def check_topology() -> int:
+    """
+    CHECK 6 — static lane-group/topology consistency (S3 regression guard).
+
+    Validates two group sources, no SUMO installation required:
+      1. DEFAULT_MANUAL_LANE_GROUPS (N1) against every legacy net under
+         sumo_configs/training and sumo_configs/evaluation/*.
+      2. Every generated sumo_configs/networks/*/lane_groups.json against
+         its own sibling intersections.net.xml (N1/N2/N3 scaled networks).
+    """
+    print("\n" + "=" * 70)
+    print("CHECK 6 — LANE-GROUP TOPOLOGY: manual groups vs SUMO net files")
+    print("=" * 70)
+
+    failures = 0
+
+    # 1. built-in N1 groups vs legacy nets
+    net_paths = [ROOT / "sumo_configs" / "training" / "intersections.net.xml"]
+    net_paths += sorted((ROOT / "sumo_configs" / "evaluation").glob("*/intersections.net.xml"))
+    for net_path in [p for p in net_paths if p.exists()]:
+        failures += _validate_lane_groups_on_net(
+            net_path,
+            {t: (list(a), list(b)) for t, (a, b) in DEFAULT_MANUAL_LANE_GROUPS.items()},
+            label=str(net_path.relative_to(ROOT)),
+        )
+
+    # 2. generated per-network groups (n1 / n2_corridor / n3_grid / ...)
+    for groups_path in sorted((ROOT / "sumo_configs" / "networks").glob("*/lane_groups.json")):
+        net_path = groups_path.parent / "intersections.net.xml"
+        if not net_path.exists():
+            _row(False, f"{groups_path.parent.name}", "lane_groups.json without intersections.net.xml")
+            failures += 1
+            continue
+        try:
+            with open(groups_path, encoding="utf-8") as f:
+                data = json.load(f)
+            groups = {
+                tls_id: (list(pair[0]), list(pair[1]))
+                for tls_id, pair in data.get("lane_groups", {}).items()
+            }
+        except Exception as exc:
+            _row(False, f"{groups_path.parent.name}: parse lane_groups.json", str(exc))
+            failures += 1
+            continue
+        failures += _validate_lane_groups_on_net(
+            net_path, groups, label=f"networks/{groups_path.parent.name}"
+        )
+
+    print(f"\n  -> Topology check: {failures} failure(s)")
+    return failures
+
+
+# ══════════════════════════════════════════════════════════════════════════════
 # CHECK 5 — LIVE SUMO (optional)
 # ══════════════════════════════════════════════════════════════════════════════
 
@@ -741,6 +871,7 @@ def main() -> None:
     f2, pct2     = check_assembly(n_scenarios=args.scenarios)
     f3, pct3     = check_metric_computation(n_scenarios=args.scenarios)
     f4           = check_parameter_alignment()
+    f6           = check_topology()
     f5, cos5     = 0, float("nan")
     if args.sumo:
         f5, cos5 = check_sumo_live(n_steps=args.sumo_steps)
@@ -748,7 +879,7 @@ def main() -> None:
     print_known_gaps()
 
     elapsed = time.perf_counter() - t0
-    total   = f1 + f2 + f3 + f4 + f5
+    total   = f1 + f2 + f3 + f4 + f5 + f6
 
     print("\n" + "=" * 70)
     print("SUMMARY")
@@ -757,6 +888,7 @@ def main() -> None:
     print(f"  Check 2 assembly equiv:   {'PASS' if f2==0 else 'FAIL':4}  match={pct2:.2f}%")
     print(f"  Check 3 metric compute:   {'PASS' if f3==0 else 'FAIL':4}  match={pct3:.2f}%")
     print(f"  Check 4 param alignment:  {'PASS' if f4==0 else 'FAIL':4}  ({f4} mismatch(es))")
+    print(f"  Check 6 lane-group topo:  {'PASS' if f6==0 else 'FAIL':4}  ({f6} failure(s))")
     if args.sumo:
         print(f"  Check 5 live SUMO:        {'PASS' if f5==0 else 'FAIL':4}  cosine={cos5:.4f}")
     print(f"\n  Total failures: {total}")

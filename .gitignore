@@ -92,6 +92,28 @@ results/paper3_sim2real/*
 results/figures/
 
 # =============================================================================
+# W3-5 benchmark / smoke / campaign-scratch artifacts (never paper data)
+# =============================================================================
+logs/*_bench*/
+models/*_bench*/
+logs/ippo_smoke/
+models/ippo_smoke/
+logs/rl/
+models/mappo/20260612_*/
+results/paper1_mappo/campaign_smoke/
+runs/
+
+# =============================================================================
+# Scaled networks (N1/N2/N3): commit topology + lane_groups + sumocfgs;
+# demand regenerates deterministically via scripts/generate_demand.py --seed
+# (same convention as sumo_configs/evaluation above). tls_actuated.add.xml
+# is rebuilt at runtime by experiment/baselines/actuated.py.
+# =============================================================================
+sumo_configs/networks/*/demand_*.rou.xml
+sumo_configs/networks/*/demand_*.trips.xml
+sumo_configs/networks/*/tls_actuated.add.xml
+
+# =============================================================================
 # Jupyter notebook checkpoints
 # =============================================================================
 notebooks/.ipynb_checkpoints/

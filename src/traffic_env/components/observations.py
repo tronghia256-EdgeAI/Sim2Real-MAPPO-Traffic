@@ -3,16 +3,34 @@ from __future__ import annotations
 """
 observation builder for a mappo-ready sumo traffic environment.
 
+PATCH NOTES (audit v3 — schema 1.1.0):
+- S1 FIX: build_local_obs previously sliced getControlledLanes()[:4], leaving
+  4 of the 8 approach lanes per junction unobserved. Lanes are now grouped by
+  parent edge into approaches and aggregated, so each of the 4 obs slots covers
+  one full approach. In vision mode each ROI id is already approach-level and
+  maps to its own slot (unchanged behaviour, now matching training semantics).
+- S2 FIX: pressure_norm was abs(sum_qa - sum_qb)/max_lanes — unsigned, so the
+  policy could not tell WHICH group was congested. Now signed and group-mean
+  based: 0.5*(1 + mean_q(group_a) - mean_q(group_b)), clipped to [0,1].
+  0.5 = balanced; >0.5 = group A (phase-0 lanes) more queued.
+
 PATCH NOTES (audit v2):
 - FIX: pressure_norm now normalized by max_lanes_per_tls (was queue_cap=50,
   causing pressure to be effectively 0 for all traffic states).
-- All other logic unchanged from audit v1.
 """
 
 from dataclasses import dataclass, field
 from typing import Any, Dict, List, Mapping, Optional, Sequence, Tuple
 
 import numpy as np
+
+# subscription variable ids (shared by traci and libsumo). If the constants
+# module is unavailable the builder transparently uses the legacy per-vehicle
+# query path.
+try:
+    import traci.constants as tc  # type: ignore
+except Exception:  # pragma: no cover
+    tc = None  # type: ignore[assignment]
 
 from src.traffic_env.config import (
     DEFAULT_LANE_FEATURE_NAMES,
@@ -175,6 +193,11 @@ class ObservationBuilder:
     # External vision cache: populated by inject_vision_cache()
     _external_lane_cache: Optional[Dict[str, LaneMetrics]] = field(default=None, init=False)
 
+    # fast-metrics state (bulk vehicle subscriptions; see _build_lane_cache_fast)
+    _fast_metrics_enabled: bool = field(default=True, init=False)
+    _sub_vars: Tuple[int, ...] = field(default=(), init=False)
+    _lane_length_cache: Dict[str, float] = field(default_factory=dict, init=False)
+
     def __post_init__(self) -> None:
         self.config.validate()
         self._lane_feature_names = tuple(self.config.observation.lane_feature_names)
@@ -188,6 +211,16 @@ class ObservationBuilder:
             "truck": (8.0, 2.5),
         }
         self._external_lane_cache = None
+        self._fast_metrics_enabled = tc is not None
+        self._lane_length_cache = {}
+        if tc is not None:
+            self._sub_vars = (
+                tc.VAR_SPEED,
+                tc.VAR_LENGTH,
+                tc.VAR_TYPE,
+                tc.VAR_CO2EMISSION,
+                tc.VAR_FUELCONSUMPTION,
+            )
 
     # ------------------------------------------------------------------
     # public api
@@ -195,6 +228,9 @@ class ObservationBuilder:
     def set_sumo_conn(self, sumo_conn: Any) -> None:
         """replace the current traci or libsumo connection."""
         self.sumo_conn = sumo_conn
+        # new simulation -> static caches invalid, subscriptions cleared by SUMO
+        self._lane_length_cache = {}
+        self._fast_metrics_enabled = tc is not None
 
     def inject_vision_cache(self, lane_cache: Dict[str, LaneMetrics]) -> None:
         """
@@ -223,7 +259,137 @@ class ObservationBuilder:
             lane_ids.extend(self._safe_lane_ids_for_tls(tls_id))
 
         ordered_lane_ids = list(dict.fromkeys(lane_ids))
+
+        # fast path: bulk vehicle subscriptions replace the 5-calls-per-vehicle
+        # loop (the dominant wall-clock cost at scale). Falls back permanently
+        # to the legacy path on the first failure.
+        if self._fast_metrics_enabled:
+            try:
+                return self._build_lane_cache_fast(ordered_lane_ids)
+            except Exception:
+                logger.exception(
+                    "fast lane metrics failed — falling back to legacy per-vehicle queries"
+                )
+                self._fast_metrics_enabled = False
+
         return {lane_id: self._lane_metrics(lane_id) for lane_id in ordered_lane_ids}
+
+    def _build_lane_cache_fast(self, lane_ids: Sequence[str]) -> Dict[str, LaneMetrics]:
+        """Subscription-based lane cache, value-identical to _lane_metrics().
+
+        Per env step this issues:  1x getAllSubscriptionResults  +  per lane
+        (getLastStepVehicleIDs, getLastStepOccupancy)  +  direct queries ONLY
+        for vehicles seen for the first time (which are simultaneously
+        subscribed so every later step serves them from the bulk result).
+        Lane lengths are static and cached for the connection lifetime.
+        """
+        conn = self.sumo_conn
+        results: Mapping[str, Mapping[int, Any]] = conn.vehicle.getAllSubscriptionResults() or {}
+        return {lane_id: self._lane_metrics_from_subs(lane_id, results) for lane_id in lane_ids}
+
+    def _lane_metrics_from_subs(
+        self,
+        lane_id: str,
+        results: Mapping[str, Mapping[int, Any]],
+    ) -> LaneMetrics:
+        """compute the exact _lane_metrics() output from subscription data."""
+        conn = self.sumo_conn
+
+        lane_length = self._lane_length_cache.get(lane_id)
+        if lane_length is None:
+            try:
+                lane_length = max(float(conn.lane.getLength(lane_id)), 1.0)
+            except Exception:
+                lane_length = 1.0
+            self._lane_length_cache[lane_id] = lane_length
+
+        try:
+            vehicle_ids: Sequence[str] = list(conn.lane.getLastStepVehicleIDs(lane_id))
+        except Exception:
+            vehicle_ids = []
+
+        occupancy_raw = 0.0
+        try:
+            occupancy_raw = float(conn.lane.getLastStepOccupancy(lane_id))
+        except Exception:
+            pass
+        occupancy = occupancy_raw / 100.0 if occupancy_raw > 1.0 else occupancy_raw
+        occupancy = self._clamp01(occupancy)
+
+        total_speed = 0.0
+        vehicle_count = 0.0
+        halted_effective_length = 0.0
+        motorbike_count = 0.0
+        heavy_vehicle_count = 0.0
+        co2_total = 0.0
+        fuel_total = 0.0
+
+        for vehicle_id in vehicle_ids:
+            data = results.get(vehicle_id)
+            if data is not None:
+                type_id = str(data.get(tc.VAR_TYPE, "") or "")
+                length = self._safe_float(data.get(tc.VAR_LENGTH, 0.0))
+                speed = self._safe_float(data.get(tc.VAR_SPEED, 0.0))
+                co2 = self._safe_float(data.get(tc.VAR_CO2EMISSION, 0.0))
+                fuel = self._safe_float(data.get(tc.VAR_FUELCONSUMPTION, 0.0))
+            else:
+                # first sighting: query directly this step, subscribe for the next
+                try:
+                    conn.vehicle.subscribe(vehicle_id, list(self._sub_vars))
+                except Exception:
+                    pass
+                try:
+                    type_id = str(conn.vehicle.getTypeID(vehicle_id))
+                except Exception:
+                    type_id = "unknown"
+                try:
+                    length = float(conn.vehicle.getLength(vehicle_id))
+                except Exception:
+                    length = 0.0
+                try:
+                    speed = float(conn.vehicle.getSpeed(vehicle_id))
+                except Exception:
+                    speed = 0.0
+                try:
+                    co2 = float(conn.vehicle.getCO2Emission(vehicle_id))
+                except Exception:
+                    co2 = 0.0
+                try:
+                    fuel = float(conn.vehicle.getFuelConsumption(vehicle_id))
+                except Exception:
+                    fuel = 0.0
+
+            category = self._classify_vehicle_type(type_id, length=length)
+            if length <= 0:
+                length = self._vehicle_profiles[category][0]
+
+            vehicle_count += 1.0
+            total_speed += speed
+            co2_total += co2
+            fuel_total += fuel
+            if category == "motorbike":
+                motorbike_count += 1.0
+            if category in ("bus", "truck"):
+                heavy_vehicle_count += 1.0
+            if speed <= 0.1:
+                halted_effective_length += length
+
+        avg_speed = total_speed / max(vehicle_count, 1.0)
+        return {
+            "effective_queue_norm": self._clamp01(halted_effective_length / lane_length),
+            "occupancy_norm": occupancy,
+            "avg_speed_norm": self._normalize(avg_speed, self.config.observation.speed_cap),
+            "motorbike_share": self._clamp01(motorbike_count / max(vehicle_count, 1.0)),
+            "heavy_vehicle_share": self._clamp01(heavy_vehicle_count / max(vehicle_count, 1.0)),
+            "raw_speed": float(avg_speed),
+            "raw_vehicle_count": float(vehicle_count),
+            "raw_halted_length": float(halted_effective_length),
+            "lane_length": float(lane_length),
+            "co2_mg_per_s": float(co2_total),
+            "fuel_ml_per_s": float(fuel_total),
+            # 1.2.0: consumed by RewardCalculator local throughput (training only)
+            "vehicle_ids": tuple(str(v) for v in vehicle_ids),
+        }
 
     def build_local_obs(
         self,
@@ -231,16 +397,20 @@ class ObservationBuilder:
         lane_cache: Mapping[str, Mapping[str, float]],
         green_timers: Optional[Dict[str, float]] = None
     ) -> np.ndarray:
-        """build a fixed-size local observation for one traffic light system."""
+        """build a fixed-size local observation for one traffic light system.
+
+        S1: each obs slot is one APPROACH (all lanes of one incoming edge,
+        aggregated), not one raw lane — so all controlled lanes contribute.
+        """
         obs: List[float] = []
-        lane_ids = self._safe_lane_ids_for_tls(tls_id)[: self.config.max_lanes_per_tls]
+        approaches = self._approach_groups_for_tls(tls_id)[: self.config.max_lanes_per_tls]
 
-        for lane_id in lane_ids:
-            metrics = lane_cache.get(lane_id, {})
+        for _approach_key, group_lane_ids in approaches:
+            agg = self._aggregate_approach_metrics(group_lane_ids, lane_cache)
             for feature_name in self._lane_feature_names:
-                obs.append(self._safe_float(metrics.get(feature_name, 0.0)))
+                obs.append(agg.get(feature_name, 0.0))
 
-        missing_lanes = self.config.max_lanes_per_tls - len(lane_ids)
+        missing_lanes = self.config.max_lanes_per_tls - len(approaches)
         if missing_lanes > 0:
             obs.extend([0.0] * (missing_lanes * self.config.lane_feature_dim))
         obs.extend(self._tls_features(tls_id, lane_cache, green_timers))
@@ -319,6 +489,65 @@ class ObservationBuilder:
             lanes = []
         cleaned = [lane_id for lane_id in dict.fromkeys(lanes) if lane_id and not str(lane_id).startswith(":")]
         return list(cleaned)
+
+    def _approach_groups_for_tls(self, tls_id: str) -> List[Tuple[str, List[str]]]:
+        """group controlled lanes into approaches, one group per incoming edge.
+
+        SUMO lane ids follow '<edge_id>_<lane_index>'; lanes sharing a parent
+        edge form one approach. In external/vision mode each cache key is
+        already an approach-level ROI, so every id maps to its own group.
+        """
+        lane_ids = self._safe_lane_ids_for_tls(tls_id)
+        if self.config.observation.use_external_state and self._external_lane_cache is not None:
+            return [(lane_id, [lane_id]) for lane_id in lane_ids]
+
+        groups: Dict[str, List[str]] = {}
+        order: List[str] = []
+        for lane_id in lane_ids:
+            edge_key = lane_id.rsplit("_", 1)[0] if "_" in lane_id else lane_id
+            if edge_key not in groups:
+                groups[edge_key] = []
+                order.append(edge_key)
+            groups[edge_key].append(lane_id)
+        return [(edge_key, groups[edge_key]) for edge_key in order]
+
+    def _aggregate_approach_metrics(
+        self,
+        lane_ids: Sequence[str],
+        lane_cache: Mapping[str, Mapping[str, float]],
+    ) -> Dict[str, float]:
+        """aggregate per-lane metrics into one approach-level feature set.
+
+        queue/occupancy are length-ratio features -> unweighted mean across
+        lanes. speed and class shares are per-vehicle statistics -> vehicle-
+        count-weighted mean, so empty lanes do not dilute them.
+        """
+        if not lane_ids:
+            return {name: 0.0 for name in self._lane_feature_names}
+        if len(lane_ids) == 1:
+            metrics = lane_cache.get(lane_ids[0], {})
+            return {
+                name: self._safe_float(metrics.get(name, 0.0))
+                for name in self._lane_feature_names
+            }
+
+        per_lane = [lane_cache.get(lane_id, {}) for lane_id in lane_ids]
+        counts = [
+            max(self._safe_float(m.get("raw_vehicle_count", 0.0)), 0.0)
+            for m in per_lane
+        ]
+        total_count = sum(counts)
+        count_weighted = {"avg_speed_norm", "motorbike_share", "heavy_vehicle_share"}
+
+        agg: Dict[str, float] = {}
+        for name in self._lane_feature_names:
+            vals = [self._safe_float(m.get(name, 0.0)) for m in per_lane]
+            if name in count_weighted and total_count > 0:
+                value = sum(v * c for v, c in zip(vals, counts)) / total_count
+            else:
+                value = float(np.mean(vals))
+            agg[name] = self._clamp01(value)
+        return agg
 
     def _safe_float(self, value: Any, default: float = 0.0) -> float:
         try:
@@ -587,14 +816,28 @@ class ObservationBuilder:
             "lane_length": float(lane_length),
             "co2_mg_per_s": float(co2_total),
             "fuel_ml_per_s": float(fuel_total),
+            # 1.2.0: consumed by RewardCalculator local throughput (training only)
+            "vehicle_ids": tuple(str(v) for v in vehicle_ids),
         }
 
     def _tls_pressure_proxy(self, tls_id: str, lane_cache: Mapping[str, Mapping[str, float]]) -> float:
-        """compute a simple pressure proxy from opposing lane group queues."""
+        """signed pressure feature in [0,1] (S2 fix).
+
+        p = mean_q(group_a) - mean_q(group_b) in [-1, 1]; feature = (p+1)/2.
+        0.5 = balanced; >0.5 = group A (phase-0 lanes) more queued. Group MEANS
+        (not sums) keep the value invariant to group size. Must stay formula-
+        identical to StateExtractor._tls_pressure_proxy (deployment side).
+        """
         group_a, group_b = self._get_tls_group_lanes(tls_id)
-        qa = sum(self._safe_float(lane_cache.get(lane_id, {}).get("effective_queue_norm", 0.0)) for lane_id in group_a)
-        qb = sum(self._safe_float(lane_cache.get(lane_id, {}).get("effective_queue_norm", 0.0)) for lane_id in group_b)
-        return abs(qa - qb)
+        qa = sum(
+            self._safe_float(lane_cache.get(lane_id, {}).get("effective_queue_norm", 0.0))
+            for lane_id in group_a
+        ) / max(len(group_a), 1)
+        qb = sum(
+            self._safe_float(lane_cache.get(lane_id, {}).get("effective_queue_norm", 0.0))
+            for lane_id in group_b
+        ) / max(len(group_b), 1)
+        return float(np.clip(0.5 * (1.0 + qa - qb), 0.0, 1.0))
 
     def _tls_group_queues(self, tls_id: str, lane_cache: Mapping[str, Mapping[str, float]]) -> Tuple[float, float]:
         """return normalized queue totals for the two opposing groups."""
@@ -625,11 +868,9 @@ class ObservationBuilder:
 
         feature_map["green_timer_norm"] = self._normalize(green_timer, self.config.sim.max_green_time)
 
-        # FIX: pressure is abs(sum_qa - sum_qb) where each term in [0,1].
-        # Maximum value = max_lanes_per_tls, so normalise by that, not queue_cap=50.
-        pressure_raw = self._tls_pressure_proxy(tls_id, lane_cache)
-        pressure_cap = float(max(self.config.max_lanes_per_tls, 1))
-        feature_map["pressure_norm"] = self._normalize(pressure_raw, pressure_cap)
+        # S2: signed pressure proxy already returns a [0,1] feature
+        # (0.5 = balanced) — no further cap normalisation.
+        feature_map["pressure_norm"] = self._tls_pressure_proxy(tls_id, lane_cache)
 
         for name, idx in self._tls_feature_index.items():
             if idx < len(features):

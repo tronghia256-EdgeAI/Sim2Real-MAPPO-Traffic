@@ -523,6 +523,10 @@ class TrafficSystemOrchestrator:
         self._yellow_duration: float = yellow_duration
         self._red_gap: float = red_gap
         self._running: bool = False
+        # Safe-mode fixed-cycle fallback
+        self._safe_mode_active:        bool  = False
+        self._fixed_cycle_phase_start: float = 0.0
+        self._fixed_cycle_green_sec:   float = 30.0
         self._last_frame_count: Dict[Union[str, int], int] = {}
         self._dropped_frames_total: int = 0
         self._metrics_accum: Dict[str, float] = {
@@ -608,26 +612,25 @@ class TrafficSystemOrchestrator:
             logger.debug("[%05d] Empty snapshot — skipping", loop_idx)
             return
 
-        # ── 2. Check for stale cameras (HIGH-2 fix: proper handling) ──────────
+        # ── 2. Check for stale cameras ────────────────────────────────────────
         stale_cams = self._check_stale_cameras(snapshot, stale_threshold_sec=5.0)
+        total_cameras = len(self._camera_mgr.camera_ids)
+        stale_count = len(stale_cams)
         if stale_cams:
             logger.warning(
                 "[%05d] Stale/missing cameras: %s (stale_threshold=5.0s)",
                 loop_idx, stale_cams
             )
-            # HIGH-2 FIX: Skip control cycle if too many cameras are stale
-            # (keep at least 75% of cameras active)
-            total_cameras = len(self._camera_mgr.camera_ids)
-            stale_count = len(stale_cams)
-            if total_cameras > 0 and stale_count / total_cameras > 0.25:
-                logger.critical(
-                    "[%05d] Too many stale cameras (%d/%d). "
-                    "Entering SAFE MODE: keeping current phase, no action.",
-                    loop_idx, stale_count, total_cameras
-                )
-                # Log but don't send new actions
-                self._log_degraded_mode(loop_idx, stale_cams)
-                return
+        if total_cameras > 0 and stale_count / total_cameras > 0.25:
+            self._run_fixed_cycle_fallback(loop_idx, stale_cams, total_cameras)
+            return
+        # Cameras healthy — exit safe mode if we were in it
+        if self._safe_mode_active:
+            logger.info(
+                "[%05d] SAFE MODE ended: cameras recovered (%d stale), resuming MAPPO control.",
+                loop_idx, stale_count
+            )
+            self._safe_mode_active = False
 
         # ── 3. Accident detection (3-frame confirmation + Telegram) ───────────
         accident_events: List[AccidentEvent] = []
@@ -776,15 +779,44 @@ class TrafficSystemOrchestrator:
                 stale.append(cam_id)
         return stale
 
-    def _log_degraded_mode(self, loop_idx: int, stale_cams: List[Any]) -> None:
-        """Log when system enters degraded/safe mode due to stale cameras."""
-        logger.critical(
-            "[%05d] DEGRADED MODE: Stale cameras %s. "
-            "Keeping current phase, no new actions sent.",
-            loop_idx, stale_cams
+    def _run_fixed_cycle_fallback(
+        self,
+        loop_idx: int,
+        stale_cams: List[Any],
+        total_cameras: int,
+    ) -> None:
+        """Fixed-time cycling controller used while >25% of cameras are stale.
+
+        Alternates phase 0 (group A green) and phase 1 (group B green) every
+        _fixed_cycle_green_sec seconds instead of freezing the current phase.
+        Resumes MAPPO control automatically once cameras recover.
+        """
+        now = time.time()
+        if not self._safe_mode_active:
+            self._safe_mode_active = True
+            self._fixed_cycle_phase_start = now
+            logger.critical(
+                "[%05d] SAFE MODE: %d/%d cameras stale %s — "
+                "switching to fixed-cycle fallback (%.0f s/phase).",
+                loop_idx, len(stale_cams), total_cameras,
+                stale_cams, self._fixed_cycle_green_sec,
+            )
+
+        elapsed = now - self._fixed_cycle_phase_start
+        if elapsed >= self._fixed_cycle_green_sec:
+            for tls_id in self.tls_ids:
+                self._action_map[tls_id] = 1 - int(self._action_map.get(tls_id, 0))
+            self._fixed_cycle_phase_start = now
+            logger.info(
+                "[%05d] SAFE MODE fixed-cycle: phase toggled after %.1f s (stale: %s)",
+                loop_idx, elapsed, stale_cams,
+            )
+
+        serial_phases = actions_to_serial_phases(
+            tls_ids=self.tls_ids,
+            action_map=self._action_map,
         )
-        # Could extend to record to separate degraded-mode log file
-        # or alert ops team
+        self._send_to_arduino(serial_phases)
 
     def _send_to_arduino(self, phases: List[int]) -> None:
         """Send RYG phase states to Arduino (0=RED, 1=YELLOW, 2=GREEN)."""

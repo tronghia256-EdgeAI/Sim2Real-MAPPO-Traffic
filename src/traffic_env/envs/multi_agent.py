@@ -1,6 +1,12 @@
 from __future__ import annotations
 
 """
+PATCH NOTES (audit v3 — schema 1.1.0):
+- FIX: action_info now includes green_lanes_by_tls (current green phase group
+  from manual lane groups). Without it RewardCalculator._compute_pressure_penalty
+  returned 0.0 for every agent on every step — the pressure reward term was
+  silently inactive in all earlier training runs.
+
 PATCH NOTES (audit v2):
 - FIX: info_dict now includes co2_mg_per_s, fuel_ml_per_s aggregated from lane_cache.
 - FIX: info_dict now includes current_passed (throughput counter) so the training
@@ -25,8 +31,17 @@ InfoDict = Dict[str, Dict[str, Any]]
 
 class MappoTrafficEnv(BaseSumoEnv):
 
-    def __init__(self, config: TrafficEnvConfig, **sumo_kwargs: Any) -> None:
+    def __init__(
+        self,
+        config: TrafficEnvConfig,
+        extra_sumo_args: Optional[List[str]] = None,
+        **sumo_kwargs: Any,
+    ) -> None:
         super().__init__(sumo_cfg_path=config.sim.sumo_cfg_path, **sumo_kwargs)
+
+        # extra SUMO CLI args appended on every (re)start — e.g.
+        # ["--tripinfo-output", "out.xml", "--tripinfo-output.write-unfinished"]
+        self.extra_sumo_args: List[str] = list(extra_sumo_args) if extra_sumo_args else []
 
         self.config = config
         self.tls_ids = list(config.tls_ids)
@@ -50,7 +65,9 @@ class MappoTrafficEnv(BaseSumoEnv):
     # RESET
     # =========================================================
     def reset(self, seed: Optional[int] = None):
-        sumo_conn = self.start_simulation(seed=seed)
+        sumo_conn = self.start_simulation(
+            seed=seed, extra_args=self.extra_sumo_args or None
+        )
         self.obs_builder.set_sumo_conn(sumo_conn)
 
         self.green_timers = {tls_id: 0.0 for tls_id in self.tls_ids}
@@ -169,10 +186,23 @@ class MappoTrafficEnv(BaseSumoEnv):
         # -----------------------------------------
         # 6. REWARD
         # -----------------------------------------
+        # green_lanes_by_tls: map the applied green phase back to its manual
+        # lane group so the pressure reward term can partition green vs red.
+        lane_groups = self.config.get_lane_groups()
+        green_lanes_by_tls: Dict[str, List[str]] = {}
+        for tls_id in self.tls_ids:
+            groups = lane_groups.get(tls_id)
+            phase_map = self._green_phase_map.get(tls_id, [])
+            target = target_phases.get(tls_id)
+            if groups and target in phase_map:
+                group_idx = phase_map.index(target)
+                green_lanes_by_tls[tls_id] = list(groups[0] if group_idx == 0 else groups[1])
+
         action_info = {
             "lane_ids_by_tls": {
                 tls_id: self._get_lanes(tls_id) for tls_id in self.tls_ids
             },
+            "green_lanes_by_tls": green_lanes_by_tls,
             "current_passed": current_passed,
             "prev_passed": prev_passed,
             "switches_by_tls": switches,

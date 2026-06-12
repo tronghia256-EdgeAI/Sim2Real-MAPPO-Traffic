@@ -1,0 +1,39 @@
+{
+  "schema_version": "1.1.0",
+  "network": "n1",
+  "tls_ids": [
+    "J0",
+    "J2"
+  ],
+  "lane_groups": {
+    "J0": [
+      [
+        "-E5_0",
+        "-E5_1",
+        "-E6_0",
+        "-E6_1"
+      ],
+      [
+        "-E0_0",
+        "-E0_1",
+        "-E1_0",
+        "-E1_1"
+      ]
+    ],
+    "J2": [
+      [
+        "-E3_0",
+        "-E3_1",
+        "-E4_0",
+        "-E4_1"
+      ],
+      [
+        "-E2_0",
+        "-E2_1",
+        "E1_0",
+        "E1_1"
+      ]
+    ]
+  },
+  "note": "group_a = lanes green in the first green phase of the TLS program; group_b = second green phase. Derived by scripts/generate_networks.py; validated against the net topology (CHECK 6 invariants)."
+}

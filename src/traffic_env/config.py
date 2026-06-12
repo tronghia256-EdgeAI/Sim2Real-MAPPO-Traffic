@@ -19,9 +19,13 @@ DEFAULT_MANUAL_LANE_GROUPS: Dict[str, Tuple[List[str], List[str]]] = {
         ["-E5_0", "-E5_1", "-E6_0", "-E6_1"],
         ["-E0_0", "-E0_1", "-E1_0", "-E1_1"],
     ),
+    # S3 FIX: J2 group B previously listed -E1_* (edge J2->J0, an approach to J0,
+    # already owned by J0's group B). J2's true incoming corridor edge is E1
+    # (J0->J2). The wrong assignment corrupted J2's pressure_norm observation,
+    # its pressure reward partition, and the MaxPressure baseline at J2.
     "J2": (
         ["-E3_0", "-E3_1", "-E4_0", "-E4_1"],
-        ["-E1_0", "-E1_1", "-E2_0", "-E2_1"],
+        ["E1_0", "E1_1", "-E2_0", "-E2_1"],
     ),
 }
 
@@ -154,8 +158,11 @@ class RewardConfig:
 
     weights: Dict[str, float] = field(default_factory=lambda: dict(DEFAULT_REWARD_WEIGHTS))
     reward_scale: float = 1.0
-    reward_clip_low: float = -2.0   # effective: worst-case raw ≈ -1.9 with default weights
-    reward_clip_high: float = 1.5   # effective: best-case raw ≈ +0.5 with default weights
+    # 1.2.0 ranges with default weights: queue [-1,0], signed pressure
+    # [-0.5,+0.5], local throughput [0,+1], switch [-0.1,0], low_speed
+    # [-0.04,0], waiting [-0.3,0]  =>  raw in [-1.94, +1.50].
+    reward_clip_low: float = -2.0
+    reward_clip_high: float = 1.5
     throughput_norm_divisor: float = 20.0
     low_speed_threshold: float = 0.20
     jam_speed_threshold: float = 0.50
@@ -207,7 +214,15 @@ class TrafficEnvConfig:
     reward: RewardConfig = field(default_factory=RewardConfig)
     vision: VisionBridgeConfig = field(default_factory=VisionBridgeConfig)
     manual_lane_groups: Optional[Dict[str, Tuple[List[str], List[str]]]] = None
-    version: str = "1.0.1"
+    # 1.1.0: per-approach obs aggregation (S1), signed pressure_norm (S2),
+    # J2 lane-group topology fix (S3). Checkpoints trained before 1.1.0 are
+    # incompatible with this observation schema.
+    # 1.2.0: reward revision for the W5-9 campaign — queue penalty mean(q^2)
+    # (anti-starvation), SIGNED pressure reward term, LOCAL per-agent
+    # lane-exit throughput (replaces global arrival split). Obs schema is
+    # unchanged from 1.1.0; reward semantics differ, so results across
+    # versions must not be pooled.
+    version: str = "1.2.0"
 
     def validate(self) -> None:
         self.sim.validate()
@@ -327,6 +342,30 @@ class TrafficEnvConfig:
         }
 
 
+def load_lane_groups_json(
+    path: str,
+) -> Tuple[Tuple[str, ...], Dict[str, Tuple[List[str], List[str]]]]:
+    """Load (tls_ids, manual_lane_groups) from a lane_groups.json.
+
+    Files are produced by scripts/generate_networks.py for the scaled
+    networks (n2_corridor, n3_grid, ...) and validated against the net
+    topology by check_obs_match.py CHECK 6.
+    """
+    import json
+    from pathlib import Path as _Path
+
+    with open(_Path(path), encoding="utf-8") as f:
+        data = json.load(f)
+    raw = data.get("lane_groups", {})
+    groups: Dict[str, Tuple[List[str], List[str]]] = {
+        tls_id: (list(pair[0]), list(pair[1])) for tls_id, pair in raw.items()
+    }
+    if not groups:
+        raise ValueError(f"no lane_groups found in {path}")
+    tls_ids = tuple(data.get("tls_ids") or sorted(groups))
+    return tls_ids, groups
+
+
 def build_default_config(
     *,
     sumo_cfg_path: str,
@@ -388,4 +427,5 @@ __all__ = [
     "TrafficEnvConfig",
     "VisionBridgeConfig",
     "build_default_config",
+    "load_lane_groups_json",
 ]
