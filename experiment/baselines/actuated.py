@@ -8,7 +8,7 @@ for tlLogic type="actuated" — no detector files needed.
 
 What this script does:
   1. Parses the network's static tlLogic programs and derives an actuated
-     twin per junction: green phases get minDur=10 / maxDur=60 (matching the
+     twin per junction: green phases get minDur=15 / maxDur=60 (matching the
      RL env's min/max green), yellows stay fixed at their static duration.
      Written to <net_dir>/tls_actuated.add.xml.
   2. Runs the scenario via TraCI with the SAME flags BaseSumoEnv uses
@@ -44,7 +44,7 @@ ENV_PARITY_FLAGS = [
     "--no-step-log",
 ]
 
-MIN_GREEN = 10.0   # matches SimConfig.min_green_time
+MIN_GREEN = 15.0   # matches SimConfig.min_green_time
 MAX_GREEN = 60.0   # matches SimConfig.max_green_time
 
 

@@ -1,22 +1,26 @@
 # State Space Review — Train/Deploy Gap Analysis
 
 **System:** MAPPO Traffic Signal Control  
-**Reviewed:** 2026-06-08  
+**Reviewed:** 2026-06-08; updated 2026-06-12 for **obs schema 1.1.0** (S1/S2/S3 fixes — see §12)  
 **Reviewer scope:** Every feature in the 26-dim per-agent observation vector, cross-checked between
 `src/traffic_env/components/observations.py` (SUMO/training) and
 `src/vision/state_extractor.py` (YOLO+ByteTrack/deployment).
 
+> **LEGACY WARNING:** checkpoint `20260418_215140` was trained on the
+> pre-1.1.0 schema (per-lane slots, unsigned pressure) and is invalid for
+> paper results. All results require retraining with `env_cfg.version >= 1.1.0`.
+
 ---
 
-## 1. Observation Vector Layout
+## 1. Observation Vector Layout (schema 1.1.0)
 
 ```
 Per agent (26 dims):
-  [0..4]   lane_0 → effective_queue_norm, occupancy_norm, avg_speed_norm,
-                    motorbike_share, heavy_vehicle_share
-  [5..9]   lane_1 → same 5 features
-  [10..14] lane_2 → same 5 features
-  [15..19] lane_3 → same 5 features
+  [0..4]   approach_0 → effective_queue_norm, occupancy_norm, avg_speed_norm,
+                        motorbike_share, heavy_vehicle_share
+  [5..9]   approach_1 → same 5 features
+  [10..14] approach_2 → same 5 features
+  [15..19] approach_3 → same 5 features
   [20]     phase_one_hot_0
   [21]     phase_one_hot_1
   [22]     phase_one_hot_2
@@ -27,7 +31,21 @@ Per agent (26 dims):
 Global critic state (52 dims): concat(agent_0_obs, agent_1_obs)
 ```
 
-Agents: `tls_0` (intersection J0, lanes 0–3), `tls_1` (intersection J2, lanes 4–7)
+Agents: `tls_0` (intersection J0, approaches 0–3), `tls_1` (intersection J2, approaches 0–3)
+
+**S1 fix (schema 1.1.0):** each 5-feature slot is one **APPROACH** (all lanes
+of one incoming edge, aggregated), not one raw lane. Pre-1.1.0 the builder
+sliced `getControlledLanes()[:4]`, leaving 4 of the 8 controlled lanes — two
+entire approaches — invisible to the policy.
+
+**Aggregation rules** (`ObservationBuilder._aggregate_approach_metrics`):
+- `effective_queue_norm`, `occupancy_norm` — length-ratio features → **unweighted mean** across the approach's lanes
+- `avg_speed_norm`, `motorbike_share`, `heavy_vehicle_share` — per-vehicle statistics → **vehicle-count-weighted mean**, so empty lanes do not dilute them
+
+Lanes are grouped by parent edge (`lane_id.rsplit("_", 1)[0]`) in
+`getControlledLanes()` order. In deployment each camera ROI already covers one
+approach, so slot k = ROI k — **ROI order must match the training approach
+order**; verify with `python scripts/check_obs_match.py --sumo`.
 
 ---
 
@@ -49,10 +67,16 @@ Agents: `tls_0` (intersection J0, lanes 0–3), `tls_1` (intersection J2, lanes 
 
 ## 3. Per-Feature Deep Review
 
+> **Note (schema 1.1.0):** the SUMO methods below describe the **per-lane**
+> computation in `_lane_metrics()`. Since S1, per-lane values are aggregated
+> into one approach-level value per obs slot using the rules in §1
+> (queue/occupancy: unweighted mean; speed/shares: count-weighted mean). The
+> camera side is unchanged — each ROI was always approach-level.
+
 ---
 
 ### Feature 1: `effective_queue_norm`
-**Vector position:** indices 0, 5, 10, 15 (one per lane)
+**Vector position:** indices 0, 5, 10, 15 (one per approach)
 
 #### SUMO (training)
 - **Source:** `observations.py:_lane_metrics()`
@@ -260,41 +284,30 @@ They are correlated (more vehicles = higher both) but not equal:
   - Yellow B→A   → `[0, 0, 0, 1]`
 - **Update freq:** every 5 s (but yellow is 3 s within a step)
 
-#### Camera (deployment)
-- **Source:** `state_extractor.py:_phase_one_hot(phase: int)` line 457
-- **Method:** `phase = phase_map[tls_id]` = MAPPO action ∈ {0, 1}
-- **Encoding:**
-  - Action 0 (Group A green) → `[1, 0, 0, 0]`
-  - Action 1 (Group B green) → `[0, 1, 0, 0]`   ← **WRONG**
+#### Camera (deployment) — PATCHED (Patch 1, see §11)
+- **Source:** `state_extractor.py:_phase_one_hot(action: int)`
+- **Method:** MAPPO action ∈ {0, 1} mapped to SUMO phase index via class-level
+  `_ACTION_TO_PHASE = {0: 0, 1: 2}` before one-hot encoding
+- **Encoding (current, correct):**
+  - Action 0 (Group A green) → SUMO phase 0 → `[1, 0, 0, 0]` ✓
+  - Action 1 (Group B green) → SUMO phase 2 → `[0, 0, 1, 0]` ✓
 
-#### Critical Train-Deploy Mismatch — PHASE ENCODING
+#### Historical Train-Deploy Mismatch — PHASE ENCODING (Bug B3, FIXED)
+Before Patch 1, `action=1` was one-hot-encoded directly at index 1:
 ```
 Training:    Group B green = [0, 0, 1, 0]   (SUMO phase index = 2)
-Deployment:  Group B green = [0, 1, 0, 0]   (action index = 1)
+Deployment:  Group B green = [0, 1, 0, 0]   (raw action index = 1)  ← was WRONG
 ```
 
-The policy was trained expecting `[0, 0, 1, 0]` when Group B is active.  
-In deployment it receives `[0, 1, 0, 0]`, which the policy learned to associate with  
-the yellow transition phase — not a stable green phase.
+The policy learned `[0,1,0,0]` as the yellow A→B transition, so every Group B
+step in deployment was misconditioned — the policy "thought" it was in a
+transient yellow while Group B was serving traffic. This was rated HIGH risk
+because `phase_one_hot` drives the switch/hold decision.
 
-**Why this matters:** The `phase_one_hot` is a critical contextual signal. The policy uses it to decide whether to switch phases and for how long to hold a phase. With wrong encoding, the policy "thinks" it is in a yellow transition when Group B is actually serving traffic.
+**Regression guard:** if any deployment log shows `[0,1,0,0]` for Group B
+green, the patch is missing. `check_obs_match.py` Check 2 covers this.
 
-**Fix:**
-```python
-# state_extractor.py  _phase_one_hot()
-# Map MAPPO action (0 or 1) to SUMO phase indices (0 or 2)
-_ACTION_TO_SUMO_PHASE = {0: 0, 1: 2}
-
-def _phase_one_hot(self, action: int) -> List[float]:
-    sumo_phase = self._ACTION_TO_SUMO_PHASE.get(int(action), 0)
-    sumo_phase = int(np.clip(sumo_phase, 0, 3))
-    vec = [0.0, 0.0, 0.0, 0.0]
-    vec[sumo_phase] = 1.0
-    return vec
-```
-
-- **Risk level:** HIGH — systematic wrong encoding for every Group B step
-- **Yellow phases during training:** `yellow_time=3s < step_length=5s`, so yellow transitions are brief but *do* appear in the training obs. The policy has seen `[0,1,0,0]` and `[0,0,0,1]` during training but learned they are transient. Receiving `[0,1,0,0]` on every Group B step confuses the policy.
+**Yellow phases during training:** `yellow_time=3s < step_length=5s`, so yellow transitions are brief but *do* appear in the training obs as `[0,1,0,0]` / `[0,0,0,1]` — the policy learned they are transient, which is why the old mis-encoding was so damaging.
 
 ---
 
@@ -329,17 +342,19 @@ def _phase_one_hot(self, action: int) -> List[float]:
 
 ---
 
-### Feature 8: `pressure_norm`
+### Feature 8: `pressure_norm` *(SIGNED — S2 fix, schema 1.1.0)*
 **Vector position:** index 25
 
 #### SUMO (training)
 - **Source:** `observations.py:_tls_features()` → `_tls_pressure_proxy()`
 - **Method:**
-  - `qa = Σ effective_queue_norm(lane) for lane in group_a`
-  - `qb = Σ effective_queue_norm(lane) for lane in group_b`
-  - `pressure_raw = |qa - qb|`
-  - `pressure_norm = pressure_raw / max_lanes_per_tls`
+  - `q̄_A = mean(effective_queue_norm(lane) for lane in group_a)`
+  - `q̄_B = mean(effective_queue_norm(lane) for lane in group_b)`
+  - `pressure_norm = clip(0.5 × (1 + q̄_A − q̄_B), 0, 1)`
 - Groups from `manual_lane_groups` in config
+- **Semantics:** 0.5 = balanced; > 0.5 = group A (phase-0 lanes) more queued;
+  < 0.5 = group B more queued. Group **means** make the value robust to
+  unequal group sizes.
 - **Unit:** ∈ [0, 1]
 - **Update freq:** every 5 s
 
@@ -350,10 +365,16 @@ def _phase_one_hot(self, action: int) -> List[float]:
 - **Unit:** ∈ [0, 1]
 - **Update freq:** every 0.1 s
 
+#### Pre-1.1.0 form (Bug S2, FIXED 2026-06-12)
+The old formula was `|Σq_A − Σq_B| / max_lanes_per_tls` — **unsigned**, so the
+policy could see *that* the groups were imbalanced but not *which* group was
+congested, making the feature nearly useless for the switch decision. Both
+pipelines were changed together to the signed group-mean form.
+
 #### Deployment Mismatch Assessment
 - **Formula:** IDENTICAL (verified — `check_obs_match.py` Check 2 shows 100% match)
 - **Risk level:** LOW — inherits whatever noise exists in `effective_queue_norm`
-- **Critical dependency:** Lane group assignments must match between SUMO training config (`DEFAULT_MANUAL_LANE_GROUPS`) and production `StateExtractor(lane_groups=...)`. If they differ, `pressure_norm` is wrong.
+- **Critical dependency:** Lane group assignments must match between SUMO training config (`DEFAULT_MANUAL_LANE_GROUPS`) and production `StateExtractor(lane_groups=...)`. If they differ, `pressure_norm` is wrong. **Bug S3** (J2 group B listed `-E1_*` — the approach to J0 — instead of `E1_*`) corrupted exactly this feature for J2 until 2026-06-12; `check_obs_match.py` CHECK 6 now guards the lane-group topology.
 
 ---
 
@@ -429,11 +450,11 @@ If a sudden density change occurs (e.g., a queue dissolves in one green cycle), 
 | `motorbike_share` | SUMO type string matching or length ≤ 2.2 m | YOLO class 3 count / total | **APPROXIMATE** — same intent, different classifier | LOW–MEDIUM | Ensure SUMO training scenarios have representative motorbike fraction |
 | `heavy_vehicle_share` | SUMO type string or length > 5.5 m | YOLO class 1 + class 4 count / total | **APPROXIMATE** — borderline vans may differ | LOW | Define explicit SUMO type IDs for bus/truck to avoid length-based ambiguity |
 | `phase_one_hot_0` | SUMO `getPhase()=0` → `[1,0,0,0]` | action=0 → `[1,0,0,0]` | **MATCH** | LOW | None |
-| `phase_one_hot_1` | SUMO `getPhase()=1` (yellow A→B) → `[0,1,0,0]` | action=1 → `[0,1,0,0]` | **MISMATCH** — deployment encodes Group B green as yellow | **HIGH** | Map action=1 → SUMO phase index 2 → `[0,0,1,0]` in `_phase_one_hot()` |
-| `phase_one_hot_2` | SUMO `getPhase()=2` (Group B green) → `[0,0,1,0]` | never produced in deployment | **MISMATCH** — Group B never encoded at index 2 | **HIGH** | Apply fix above |
-| `phase_one_hot_3` | SUMO `getPhase()=3` (yellow B→A) → `[0,0,0,1]` | never produced in deployment | LOW — yellow B→A is brief; policy rarely acts on it | LOW | Apply fix above for completeness |
-| `green_timer_norm` | `green_timer / max_green_time` (60 s), stepped every 5 s | `green_timer / max_green_time` (60 s), real-time clock | **MATCH** — formula identical; continuous vs discrete update | LOW | Orchestrators must load `max_green_time=60` from `state_config.json`, not StateExtractor default (90 s) |
-| `pressure_norm` | `\|Σeff_q_A − Σeff_q_B\| / max_lanes` from SUMO queue | same formula from camera queue | **MATCH** (formula verified by check_obs_match.py Check 2 = 100%) | LOW | Lane group assignments in `StateExtractor(lane_groups=...)` must match SUMO `DEFAULT_MANUAL_LANE_GROUPS` mapping |
+| `phase_one_hot_1` | SUMO `getPhase()=1` (yellow A→B) → `[0,1,0,0]` | never produced in deployment (yellow handled by env/serial timing, not policy) | **MATCH** (fixed — Patch 1; was MISMATCH: action=1 encoded here) | LOW | Patch applied: `_ACTION_TO_PHASE = {0: 0, 1: 2}` |
+| `phase_one_hot_2` | SUMO `getPhase()=2` (Group B green) → `[0,0,1,0]` | action=1 → `[0,0,1,0]` | **MATCH** (fixed — Patch 1) | LOW | None — regression-guarded by check_obs_match.py |
+| `phase_one_hot_3` | SUMO `getPhase()=3` (yellow B→A) → `[0,0,0,1]` | never produced in deployment | LOW — yellow B→A is brief; policy rarely acts on it | LOW | None |
+| `green_timer_norm` | `green_timer / max_green_time` (60 s), stepped every 5 s | `green_timer / max_green_time` (60 s), real-time clock | **MATCH** — formula identical; continuous vs discrete update | LOW | Orchestrators must load `max_green_time=60` from `state_config.json`, not legacy StateExtractor default (90 s — patched to 60) |
+| `pressure_norm` | `clip(0.5·(1 + q̄_A − q̄_B), 0, 1)` signed group-mean (S2) | same formula from camera queue | **MATCH** (formula verified by check_obs_match.py Check 2 = 100%) | LOW | Lane group assignments in `StateExtractor(lane_groups=...)` must match SUMO `DEFAULT_MANUAL_LANE_GROUPS` (S3 J2 topology fixed; CHECK 6 guards) |
 
 ---
 
@@ -475,10 +496,30 @@ The following bugs were found and patched during this review. See `scripts/check
 - **After:** `_CLASS_LENGTH_PX` computed at init as `CLASS_LENGTH_M[cls] × px_per_meter`
 - **Impact:** At configured `px_per_meter=20`, car length was 30 px instead of correct 4.5×20=90 px. This caused `effective_queue_norm` to be ~3× too low in production vs training.
 
-### Bug 3 — Phase Encoding (NOT YET FIXED)
+### Bug 3 — Phase Encoding (FIXED — Patch 1, §11)
 - **File:** `src/vision/state_extractor.py:_phase_one_hot()`
 - **Issue:** `action=1` (Group B green) → encoded as `[0,1,0,0]` instead of `[0,0,1,0]`
-- **Required fix:** Map MAPPO action to SUMO phase index before one-hot encoding
+- **Fix applied:** class-level `_ACTION_TO_PHASE = {0: 0, 1: 2}` maps MAPPO action to SUMO phase index before one-hot encoding
+
+### Bug S1 — Per-Lane Slicing (FIXED 2026-06-12 — schema 1.1.0, §12)
+- **File:** `src/traffic_env/components/observations.py:build_local_obs`
+- **Issue:** obs sliced `getControlledLanes()[:4]` — only 4 of 8 controlled lanes observed; 2 entire approaches invisible to the policy
+- **Fix applied:** lanes grouped by parent edge into approaches and aggregated (§1)
+
+### Bug S2 — Unsigned Pressure (FIXED 2026-06-12 — schema 1.1.0, §12)
+- **Files:** `observations.py` + `state_extractor.py` (both pipelines together)
+- **Issue:** `pressure_norm = |Σq_A − Σq_B| / max_lanes` — direction of imbalance unobservable
+- **Fix applied:** signed group-mean form `clip(0.5·(1 + q̄_A − q̄_B), 0, 1)`
+
+### Bug S3 — J2 Lane-Group Topology (FIXED 2026-06-12)
+- **File:** `src/traffic_env/config.py:DEFAULT_MANUAL_LANE_GROUPS`
+- **Issue:** J2 group B listed `-E1_*` (the approach to **J0**) instead of `E1_*`; corrupted J2 `pressure_norm` obs, pressure reward, and the MaxPressure baseline
+- **Fix applied:** corrected lane IDs; `check_obs_match.py` CHECK 6 guards the topology
+
+### Bug B1b — `stop_speed_m_s` Config Remnant (FIXED 2026-06-12)
+- **File:** `configs/state_config.json`
+- **Issue:** `stop_speed_m_s: 0.5` remained after Bug 1's code fix (training uses 0.1 m/s) → deployed queue estimation diverged from training
+- **Fix applied:** set to 0.1 to match `HALT_SPEED_THRESHOLD_MPS`
 
 ---
 
@@ -486,12 +527,13 @@ The following bugs were found and patched during this review. See `scripts/check
 
 **Before deployment:**
 
-- [ ] Fix `_phase_one_hot()` in `state_extractor.py` to map action=1 → phase_index=2 → `[0,0,1,0]`
+- [x] Fix `_phase_one_hot()` in `state_extractor.py` to map action=1 → phase_index=2 → `[0,0,1,0]` *(Patch 1 — verify `_ACTION_TO_PHASE = {0: 0, 1: 2}` present)*
 - [ ] Measure `px_per_meter` for every camera installation; update `state_config.json` per camera
 - [ ] Verify `lane_length_px` in ROI definitions matches actual surveyed distance / px_per_meter
-- [ ] Confirm all orchestrators pass `max_green_time=60` from `state_config.json` (not StateExtractor default 90)
-- [ ] Confirm `lane_groups` passed to `StateExtractor` matches SUMO training `DEFAULT_MANUAL_LANE_GROUPS` topology
-- [ ] Run `python scripts/check_obs_match.py` and confirm all 4 checks pass
+- [ ] Confirm all orchestrators pass `max_green_time=60` from `state_config.json`
+- [ ] Confirm `lane_groups` passed to `StateExtractor` matches SUMO training `DEFAULT_MANUAL_LANE_GROUPS` topology (CHECK 6)
+- [ ] Confirm camera ROI order matches the training approach order (`check_obs_match.py --sumo`)
+- [ ] Run `python scripts/check_obs_match.py` and confirm all checks pass (1 structural, 2 assembly, 3 metric, 4 params, 6 lane-group topology)
 
 **After deployment:**
 
@@ -512,7 +554,8 @@ The following bugs were found and patched during this review. See `scripts/check
 | 2. Assembly equivalence | Same metrics injected into both pipelines → identical obs | 100% match |
 | 3. Metric computation | Same YOLO tracks → StateExtractor vs VisionLaneMetrics per-feature | ≥ 95% match |
 | 4. Parameter alignment | state_config.json vs TrafficEnvConfig caps | 0 mismatches |
-| 5. Live SUMO (optional) | SUMO obs vs re-assembled from same SUMO metrics | cosine ≥ 0.95 |
+| 5. Live SUMO (optional, `--sumo`) | SUMO obs vs re-assembled from same SUMO metrics; approach/ROI order | cosine ≥ 0.95 |
+| 6. Lane-group topology | `DEFAULT_MANUAL_LANE_GROUPS` lane IDs are real approaches of their own junction (guards Bug S3) | 0 mismatches |
 
 Run with: `python scripts/check_obs_match.py [--sumo] [--scenarios N]`
 
@@ -631,3 +674,63 @@ Remaining gaps (not addressable by code alone):
 - `px_per_meter` must be measured per camera at installation
 - `avg_speed_norm` noise from ByteTrack at low speeds (EMA partially mitigates)
 - SUMO training scenarios should include representative Vietnamese vehicle type distributions
+
+---
+
+## 12. Schema 1.1.0 — Audit v3 Patches (2026-06-12)
+
+A second audit pass found three structural observation bugs that survived the
+2026-06-08 review. All are fixed; the obs schema version was bumped to
+**1.1.0**. The obs vector remains 26-dim — the *meaning* of the slots changed,
+which is why every pre-1.1.0 checkpoint is invalid.
+
+### S1 — Per-Approach Aggregation (CRITICAL)
+
+**File:** `src/traffic_env/components/observations.py:build_local_obs`
+
+**Problem:** the builder sliced `getControlledLanes()[:4]`, so each obs slot
+was one raw lane and only 4 of the 8 controlled lanes per junction were
+observed — two entire approaches were invisible to the policy. The vision side
+was *already* approach-level (one ROI per approach), so training and
+deployment slots had different semantics.
+
+**Fix:** `_approach_groups_for_tls()` groups controlled lanes by parent edge;
+`_aggregate_approach_metrics()` aggregates per-lane metrics into one
+approach-level feature set (queue/occupancy: unweighted mean; speed/class
+shares: vehicle-count-weighted mean). Each slot now covers one full approach
+in both pipelines.
+
+### S2 — Signed Pressure
+
+**Files:** `observations.py:_tls_pressure_proxy` + `state_extractor.py:_tls_pressure_proxy`
+
+**Problem:** `pressure_norm = |Σq_A − Σq_B| / max_lanes_per_tls` was unsigned —
+the policy could not tell WHICH group was congested.
+
+**Fix:** `pressure_norm = clip(0.5 × (1 + q̄_A − q̄_B), 0, 1)` with group
+**means**. 0.5 = balanced; > 0.5 = group A more queued. Both pipelines changed
+together; equivalence verified by `check_obs_match.py` Check 2.
+
+### S3 — J2 Lane-Group Topology
+
+**File:** `src/traffic_env/config.py:DEFAULT_MANUAL_LANE_GROUPS`
+
+**Problem:** J2's group B listed `-E1_*` lanes — the approach to **J0** — so
+J2's `pressure_norm` (and the pressure reward term, and the MaxPressure
+baseline) mixed in another junction's queues.
+
+**Fix:** corrected to `E1_*`; guarded by `check_obs_match.py` CHECK 6.
+
+### Related same-day fixes outside the obs vector
+
+| ID | Area | Summary |
+|---|---|---|
+| R1 | reward | `green_lanes_by_tls` now wired in `multi_agent.py` — pressure reward was silently 0.0 before (see `docs/reward.md` §7) |
+| R2 | training | per-agent value heads + per-agent GAE in `train_ppo.py` (MAPPO v3) |
+| E1 | eval | `eval_max_steps` default 400 → 1080 (full episode) |
+| B1b | config | `state_config.json:stop_speed_m_s` 0.5 → 0.1 (matches training halt threshold) |
+
+Reward revision **1.2.0** (mean-of-squares queue, signed pressure reward,
+local lane-exit throughput) followed the same day — documented in
+`docs/reward.md`. The obs schema was deliberately left unchanged at 26-dim
+for the W5 campaign.

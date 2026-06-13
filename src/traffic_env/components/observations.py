@@ -197,6 +197,8 @@ class ObservationBuilder:
     _fast_metrics_enabled: bool = field(default=True, init=False)
     _sub_vars: Tuple[int, ...] = field(default=(), init=False)
     _lane_length_cache: Dict[str, float] = field(default_factory=dict, init=False)
+    # W5-9: emit PRIVILEGED_EXTRA_LANE_FEATURE_NAMES from exact SUMO state
+    _privileged: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.config.validate()
@@ -211,6 +213,7 @@ class ObservationBuilder:
             "truck": (8.0, 2.5),
         }
         self._external_lane_cache = None
+        self._privileged = self.config.observation.obs_mode == "privileged"
         self._fast_metrics_enabled = tc is not None
         self._lane_length_cache = {}
         if tc is not None:
@@ -319,6 +322,7 @@ class ObservationBuilder:
         total_speed = 0.0
         vehicle_count = 0.0
         halted_effective_length = 0.0
+        halted_count = 0.0
         motorbike_count = 0.0
         heavy_vehicle_count = 0.0
         co2_total = 0.0
@@ -373,9 +377,10 @@ class ObservationBuilder:
                 heavy_vehicle_count += 1.0
             if speed <= 0.1:
                 halted_effective_length += length
+                halted_count += 1.0
 
         avg_speed = total_speed / max(vehicle_count, 1.0)
-        return {
+        metrics = {
             "effective_queue_norm": self._clamp01(halted_effective_length / lane_length),
             "occupancy_norm": occupancy,
             "avg_speed_norm": self._normalize(avg_speed, self.config.observation.speed_cap),
@@ -389,6 +394,35 @@ class ObservationBuilder:
             "fuel_ml_per_s": float(fuel_total),
             # 1.2.0: consumed by RewardCalculator local throughput (training only)
             "vehicle_ids": tuple(str(v) for v in vehicle_ids),
+        }
+        if self._privileged:
+            metrics.update(
+                self._privileged_lane_features(lane_id, halted_count, vehicle_count)
+            )
+        return metrics
+
+    def _privileged_lane_features(
+        self, lane_id: str, halted_count: float, vehicle_count: float
+    ) -> Dict[str, float]:
+        """Exact-SUMO per-lane features for the MAPPO-privileged arm (W5-9).
+
+        Namespaced ``privileged_*`` so the RewardCalculator never consumes them
+        (the reward must be identical across the privileged and proxy arms — only
+        the observation differs). ``getWaitingTime`` is the lane-summed accumulated
+        waiting time, queried only in privileged mode to avoid extra TraCI calls on
+        the deployable path.
+        """
+        obs_cfg = self.config.observation
+        qcap = max(float(obs_cfg.queue_cap), 1.0)
+        wcap = max(float(obs_cfg.waiting_cap), 1.0)
+        try:
+            waiting = float(self.sumo_conn.lane.getWaitingTime(lane_id))
+        except Exception:
+            waiting = 0.0
+        return {
+            "privileged_halt_count_norm": self._clamp01(halted_count / qcap),
+            "privileged_waiting_norm": self._clamp01(waiting / wcap),
+            "privileged_vehicle_count_norm": self._clamp01(vehicle_count / qcap),
         }
 
     def build_local_obs(
@@ -767,6 +801,7 @@ class ObservationBuilder:
         total_speed = 0.0
         vehicle_count = 0.0
         halted_effective_length = 0.0
+        halted_count = 0.0
         motorbike_count = 0.0
         heavy_vehicle_count = 0.0
         co2_total = 0.0
@@ -798,13 +833,14 @@ class ObservationBuilder:
                 heavy_vehicle_count += 1.0
             if speed <= 0.1:
                 halted_effective_length += length
+                halted_count += 1.0
 
         avg_speed = total_speed / max(vehicle_count, 1.0)
         effective_queue_norm = self._clamp01(halted_effective_length / lane_length)
         motorbike_share = self._clamp01(motorbike_count / max(vehicle_count, 1.0))
         heavy_vehicle_share = self._clamp01(heavy_vehicle_count / max(vehicle_count, 1.0))
 
-        return {
+        metrics = {
             "effective_queue_norm": effective_queue_norm,
             "occupancy_norm": occupancy,
             "avg_speed_norm": self._normalize(avg_speed, self.config.observation.speed_cap),
@@ -819,6 +855,11 @@ class ObservationBuilder:
             # 1.2.0: consumed by RewardCalculator local throughput (training only)
             "vehicle_ids": tuple(str(v) for v in vehicle_ids),
         }
+        if self._privileged:
+            metrics.update(
+                self._privileged_lane_features(lane_id, halted_count, vehicle_count)
+            )
+        return metrics
 
     def _tls_pressure_proxy(self, tls_id: str, lane_cache: Mapping[str, Mapping[str, float]]) -> float:
         """signed pressure feature in [0,1] (S2 fix).

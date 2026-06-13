@@ -37,6 +37,17 @@ DEFAULT_LANE_FEATURE_NAMES: Tuple[str, ...] = (
     "heavy_vehicle_share",
 )
 
+# W5-9 campaign: extra simulator-exact per-approach features for the
+# MAPPO-privileged upper-bound arm (paper VI-C "cost of deployability").
+# Deliberately namespaced "privileged_" so the RewardCalculator (which reads
+# e.g. "waiting_time_norm") never picks them up — the reward must stay
+# identical across the privileged and proxy arms; only the obs differs.
+PRIVILEGED_EXTRA_LANE_FEATURE_NAMES: Tuple[str, ...] = (
+    "privileged_halt_count_norm",     # exact halted-vehicle count / queue_cap
+    "privileged_waiting_norm",        # lane accumulated waiting time / waiting_cap
+    "privileged_vehicle_count_norm",  # exact vehicle count / queue_cap
+)
+
 DEFAULT_TLS_FEATURE_NAMES: Tuple[str, ...] = (
     "phase_one_hot_0",
     "phase_one_hot_1",
@@ -65,7 +76,7 @@ class SimConfig:
     step_length: int = 5
     yellow_time: int = 3
     max_steps: int = 1080
-    min_green_time: int = 10
+    min_green_time: int = 15
     max_green_time: int = 60
     seed: Optional[int] = None
     debug: bool = False
@@ -120,12 +131,33 @@ class ObservationConfig:
     waiting_cap: float = 300.0
     speed_cap: float = 15.0
     use_external_state: bool = False
+    # "proxy" (default): camera-computable features only — the deployable arm.
+    # "privileged": proxy features + PRIVILEGED_EXTRA_LANE_FEATURE_NAMES from
+    # exact simulator state — upper-bound arm, never deployable.
+    obs_mode: str = "proxy"
 
     def validate(self) -> None:
         if not self.lane_feature_names:
             raise ValueError("lane_feature_names must not be empty")
         if not self.tls_feature_names:
             raise ValueError("tls_feature_names must not be empty")
+        if self.obs_mode not in {"proxy", "privileged"}:
+            raise ValueError("obs_mode must be 'proxy' or 'privileged'")
+        if self.obs_mode == "privileged":
+            missing = [n for n in PRIVILEGED_EXTRA_LANE_FEATURE_NAMES
+                       if n not in self.lane_feature_names]
+            if missing:
+                raise ValueError(
+                    f"obs_mode='privileged' requires privileged lane features "
+                    f"in lane_feature_names; missing: {missing}"
+                )
+        if self.obs_mode == "proxy":
+            leaked = [n for n in self.lane_feature_names
+                      if n in PRIVILEGED_EXTRA_LANE_FEATURE_NAMES]
+            if leaked:
+                raise ValueError(
+                    f"obs_mode='proxy' must not contain privileged features: {leaked}"
+                )
         if self.queue_cap <= 0:
             raise ValueError("queue_cap must be > 0")
         if self.waiting_cap <= 0:
@@ -375,17 +407,33 @@ def build_default_config(
     step_length: int = 5,
     yellow_time: int = 3,
     max_steps: int = 1080,
-    min_green_time: int = 10,
+    min_green_time: int = 15,
     max_green_time: int = 60,
     queue_cap: float = 50.0,
     waiting_cap: float = 300.0,
     speed_cap: float = 15.0,
     use_external_state: bool = False,
+    obs_mode: str = "proxy",
     manual_lane_groups: Optional[Dict[str, Tuple[List[str], List[str]]]] = None,
     debug: bool = False,
     reward_scale: float = 1.0,
 ) -> TrafficEnvConfig:
-    """helper constructor for scripts and experiments."""
+    """helper constructor for scripts and experiments.
+
+    ``obs_mode='privileged'`` appends PRIVILEGED_EXTRA_LANE_FEATURE_NAMES to the
+    per-approach feature set (8 lane features instead of 5), enlarging the obs
+    vector; the reward and TLS features are untouched so the privileged arm
+    differs from the proxy arm in observation only.
+    """
+    if obs_mode == "privileged":
+        lane_feature_names: Tuple[str, ...] = (
+            DEFAULT_LANE_FEATURE_NAMES + PRIVILEGED_EXTRA_LANE_FEATURE_NAMES
+        )
+    elif obs_mode == "proxy":
+        lane_feature_names = DEFAULT_LANE_FEATURE_NAMES
+    else:
+        raise ValueError(f"unknown obs_mode {obs_mode!r}; expected 'proxy' or 'privileged'")
+
     cfg = TrafficEnvConfig(
         sim=SimConfig(
             sumo_cfg_path=sumo_cfg_path,
@@ -402,10 +450,12 @@ def build_default_config(
             max_lanes_per_tls=max_lanes_per_tls,
         ),
         observation=ObservationConfig(
+            lane_feature_names=lane_feature_names,
             queue_cap=queue_cap,
             waiting_cap=waiting_cap,
             speed_cap=speed_cap,
             use_external_state=use_external_state,
+            obs_mode=obs_mode,
         ),
         reward=RewardConfig(reward_scale=reward_scale),
         manual_lane_groups=manual_lane_groups,
@@ -420,6 +470,7 @@ __all__ = [
     "DEFAULT_REWARD_WEIGHTS",
     "DEFAULT_TLS_FEATURE_NAMES",
     "DEFAULT_TLS_IDS",
+    "PRIVILEGED_EXTRA_LANE_FEATURE_NAMES",
     "MultiAgentConfig",
     "ObservationConfig",
     "RewardConfig",

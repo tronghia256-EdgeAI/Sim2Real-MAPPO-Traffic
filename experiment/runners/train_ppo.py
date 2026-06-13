@@ -448,6 +448,31 @@ def compute_gae(
 # ---------------------------------------------------------------------
 # Environment helpers
 # ---------------------------------------------------------------------
+def sync_obs_mode_from_checkpoint(args: argparse.Namespace) -> None:
+    """For eval modes: read obs_mode from the checkpoint's run_config.json.
+
+    The privileged arm has a larger obs vector (38-dim vs 26-dim), so evaluating
+    a privileged checkpoint with the default proxy env would otherwise fail at
+    actor.load_state_dict. We resolve obs_mode from the run_config sitting next to
+    the checkpoint so the eval env is rebuilt with the matching dimensionality
+    without the caller having to remember --obs-mode.
+    """
+    ckpt = getattr(args, "checkpoint", None)
+    if not ckpt:
+        return
+    cfg_path = Path(ckpt).parent / "run_config.json"
+    if not cfg_path.exists():
+        return
+    try:
+        run_cfg = json.loads(cfg_path.read_text(encoding="utf-8"))
+        mode = run_cfg.get("env_cfg", {}).get("observation", {}).get("obs_mode")
+    except Exception:
+        return
+    if mode in ("proxy", "privileged") and mode != getattr(args, "obs_mode", "proxy"):
+        print(f"[eval] obs_mode resolved to {mode!r} from {cfg_path}")
+        args.obs_mode = mode
+
+
 def make_env(args: argparse.Namespace) -> Tuple[MappoTrafficEnv, Any]:
     # scaled networks (n2_corridor, n3_grid, ...) ship a lane_groups.json that
     # provides both the TLS roster and the phase-group partition; explicit
@@ -475,6 +500,7 @@ def make_env(args: argparse.Namespace) -> Tuple[MappoTrafficEnv, Any]:
         waiting_cap=args.waiting_cap,
         speed_cap=args.speed_cap,
         use_external_state=False,
+        obs_mode=getattr(args, "obs_mode", "proxy"),
         debug=args.debug,
         reward_scale=args.reward_scale,
     )
@@ -1265,12 +1291,15 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--step-length", type=int, default=5)
     parser.add_argument("--yellow-time", type=int, default=3)
     parser.add_argument("--max-steps", type=int, default=1080)
-    parser.add_argument("--min-green-time", type=int, default=10)
+    parser.add_argument("--min-green-time", type=int, default=15)
     parser.add_argument("--max-green-time", type=int, default=60)
     parser.add_argument("--queue-cap", type=float, default=50.0)
     parser.add_argument("--waiting-cap", type=float, default=300.0)
     parser.add_argument("--speed-cap", type=float, default=15.0)
     parser.add_argument("--max-lanes-per-tls", type=int, default=4)
+    parser.add_argument("--obs-mode", choices=["proxy", "privileged"], default="proxy",
+                        help="proxy=camera-computable obs (deployable); "
+                             "privileged=proxy + exact-SUMO features (VI-C upper bound)")
     parser.add_argument("--reward-scale", type=float, default=1.0)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--tls-ids", nargs="*", default=[])
@@ -1283,8 +1312,10 @@ def main() -> None:
     if args.mode == "train":
         train(args)
     elif args.mode == "multiseed_eval":
+        sync_obs_mode_from_checkpoint(args)
         run_multiseed_eval(args)
     else:
+        sync_obs_mode_from_checkpoint(args)
         evaluate(args)
 
 

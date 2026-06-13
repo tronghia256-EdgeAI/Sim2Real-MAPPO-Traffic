@@ -1,0 +1,370 @@
+{
+  "run_id": "20260613_015047",
+  "algo": "mappo",
+  "critic_arch": "central_multihead",
+  "lane_groups_file": "C:\\Users\\ASUS\\Desktop\\Traffic-Guard-AI-main\\sumo_configs\\networks\\n3_grid\\lane_groups.json",
+  "env_cfg": {
+    "version": "1.2.0",
+    "sim": {
+      "sumo_cfg_path": "C:\\Users\\ASUS\\Desktop\\Traffic-Guard-AI-main\\sumo_configs\\networks\\n3_grid\\sumo_config.sumocfg",
+      "gui": false,
+      "step_length": 5,
+      "yellow_time": 3,
+      "max_steps": 1080,
+      "min_green_time": 15,
+      "max_green_time": 60,
+      "seed": null,
+      "debug": false
+    },
+    "multi_agent": {
+      "tls_ids": [
+        "A0",
+        "A1",
+        "A2",
+        "A3",
+        "B0",
+        "B1",
+        "B2",
+        "B3",
+        "C0",
+        "C1",
+        "C2",
+        "C3",
+        "D0",
+        "D1",
+        "D2",
+        "D3"
+      ],
+      "max_lanes_per_tls": 4,
+      "shared_policy": true,
+      "action_mode": "discrete_phase",
+      "centralized_value": true,
+      "num_agents": 16
+    },
+    "observation": {
+      "lane_feature_names": [
+        "effective_queue_norm",
+        "occupancy_norm",
+        "avg_speed_norm",
+        "motorbike_share",
+        "heavy_vehicle_share"
+      ],
+      "tls_feature_names": [
+        "phase_one_hot_0",
+        "phase_one_hot_1",
+        "phase_one_hot_2",
+        "phase_one_hot_3",
+        "green_timer_norm",
+        "pressure_norm"
+      ],
+      "queue_cap": 50.0,
+      "waiting_cap": 300.0,
+      "speed_cap": 15.0,
+      "use_external_state": false,
+      "lane_feature_dim": 5,
+      "tls_feature_dim": 6,
+      "local_obs_dim": 26,
+      "global_state_dim": 416,
+      "observation_dim": 416
+    },
+    "reward": {
+      "weights": {
+        "queue": -1.0,
+        "pressure": -0.5,
+        "throughput": 1.0,
+        "switch_penalty": -0.1,
+        "low_speed_penalty": -0.2,
+        "waiting_time": -0.3
+      },
+      "reward_scale": 1.0,
+      "reward_clip_low": -2.0,
+      "reward_clip_high": 1.5,
+      "throughput_norm_divisor": 20.0,
+      "low_speed_threshold": 0.2,
+      "jam_speed_threshold": 0.5,
+      "jam_queue_threshold": 0.5
+    },
+    "vision": {
+      "enabled": false,
+      "buffer_size": 30,
+      "confidence_threshold": 0.35,
+      "iou_threshold": 0.45,
+      "min_track_age": 2,
+      "max_track_gap": 10,
+      "camera_ids": []
+    },
+    "manual_lane_groups": {
+      "A0": [
+        [
+          "A1A0_0",
+          "A1A0_1",
+          "bottom0A0_0",
+          "bottom0A0_1"
+        ],
+        [
+          "B0A0_0",
+          "B0A0_1",
+          "left0A0_0",
+          "left0A0_1"
+        ]
+      ],
+      "A1": [
+        [
+          "A0A1_0",
+          "A0A1_1",
+          "A2A1_0",
+          "A2A1_1"
+        ],
+        [
+          "B1A1_0",
+          "B1A1_1",
+          "left1A1_0",
+          "left1A1_1"
+        ]
+      ],
+      "A2": [
+        [
+          "A1A2_0",
+          "A1A2_1",
+          "A3A2_0",
+          "A3A2_1"
+        ],
+        [
+          "B2A2_0",
+          "B2A2_1",
+          "left2A2_0",
+          "left2A2_1"
+        ]
+      ],
+      "A3": [
+        [
+          "A2A3_0",
+          "A2A3_1",
+          "top0A3_0",
+          "top0A3_1"
+        ],
+        [
+          "B3A3_0",
+          "B3A3_1",
+          "left3A3_0",
+          "left3A3_1"
+        ]
+      ],
+      "B0": [
+        [
+          "B1B0_0",
+          "B1B0_1",
+          "bottom1B0_0",
+          "bottom1B0_1"
+        ],
+        [
+          "A0B0_0",
+          "A0B0_1",
+          "C0B0_0",
+          "C0B0_1"
+        ]
+      ],
+      "B1": [
+        [
+          "B0B1_0",
+          "B0B1_1",
+          "B2B1_0",
+          "B2B1_1"
+        ],
+        [
+          "A1B1_0",
+          "A1B1_1",
+          "C1B1_0",
+          "C1B1_1"
+        ]
+      ],
+      "B2": [
+        [
+          "B1B2_0",
+          "B1B2_1",
+          "B3B2_0",
+          "B3B2_1"
+        ],
+        [
+          "A2B2_0",
+          "A2B2_1",
+          "C2B2_0",
+          "C2B2_1"
+        ]
+      ],
+      "B3": [
+        [
+          "B2B3_0",
+          "B2B3_1",
+          "top1B3_0",
+          "top1B3_1"
+        ],
+        [
+          "A3B3_0",
+          "A3B3_1",
+          "C3B3_0",
+          "C3B3_1"
+        ]
+      ],
+      "C0": [
+        [
+          "C1C0_0",
+          "C1C0_1",
+          "bottom2C0_0",
+          "bottom2C0_1"
+        ],
+        [
+          "B0C0_0",
+          "B0C0_1",
+          "D0C0_0",
+          "D0C0_1"
+        ]
+      ],
+      "C1": [
+        [
+          "C0C1_0",
+          "C0C1_1",
+          "C2C1_0",
+          "C2C1_1"
+        ],
+        [
+          "B1C1_0",
+          "B1C1_1",
+          "D1C1_0",
+          "D1C1_1"
+        ]
+      ],
+      "C2": [
+        [
+          "C1C2_0",
+          "C1C2_1",
+          "C3C2_0",
+          "C3C2_1"
+        ],
+        [
+          "B2C2_0",
+          "B2C2_1",
+          "D2C2_0",
+          "D2C2_1"
+        ]
+      ],
+      "C3": [
+        [
+          "C2C3_0",
+          "C2C3_1",
+          "top2C3_0",
+          "top2C3_1"
+        ],
+        [
+          "B3C3_0",
+          "B3C3_1",
+          "D3C3_0",
+          "D3C3_1"
+        ]
+      ],
+      "D0": [
+        [
+          "D1D0_0",
+          "D1D0_1",
+          "bottom3D0_0",
+          "bottom3D0_1"
+        ],
+        [
+          "C0D0_0",
+          "C0D0_1",
+          "right0D0_0",
+          "right0D0_1"
+        ]
+      ],
+      "D1": [
+        [
+          "D0D1_0",
+          "D0D1_1",
+          "D2D1_0",
+          "D2D1_1"
+        ],
+        [
+          "C1D1_0",
+          "C1D1_1",
+          "right1D1_0",
+          "right1D1_1"
+        ]
+      ],
+      "D2": [
+        [
+          "D1D2_0",
+          "D1D2_1",
+          "D3D2_0",
+          "D3D2_1"
+        ],
+        [
+          "C2D2_0",
+          "C2D2_1",
+          "right2D2_0",
+          "right2D2_1"
+        ]
+      ],
+      "D3": [
+        [
+          "D2D3_0",
+          "D2D3_1",
+          "top3D3_0",
+          "top3D3_1"
+        ],
+        [
+          "C3D3_0",
+          "C3D3_1",
+          "right3D3_0",
+          "right3D3_1"
+        ]
+      ]
+    }
+  },
+  "train_cfg": {
+    "seed": 42,
+    "total_timesteps": 100000,
+    "rollout_horizon": 128,
+    "gamma": 0.99,
+    "gae_lambda": 0.95,
+    "normalize_advantages": true,
+    "clip_range_vf": 0.2,
+    "clip_ratio": 0.2,
+    "target_kl": 0.015,
+    "policy_lr": 0.0003,
+    "value_lr": 0.0003,
+    "update_epochs": 10,
+    "minibatch_size": 256,
+    "entropy_coef_start": 0.01,
+    "entropy_coef_end": 0.001,
+    "value_coef": 0.5,
+    "max_grad_norm": 0.5,
+    "log_dir": "logs/rl",
+    "ckpt_dir": "models/mappo",
+    "save_every_steps": 50000,
+    "save_latest_every_updates": 1,
+    "eval_episodes": 5,
+    "eval_max_steps": 1080,
+    "device": "cpu"
+  },
+  "tls_ids": [
+    "A0",
+    "A1",
+    "A2",
+    "A3",
+    "B0",
+    "B1",
+    "B2",
+    "B3",
+    "C0",
+    "C1",
+    "C2",
+    "C3",
+    "D0",
+    "D1",
+    "D2",
+    "D3"
+  ],
+  "obs_dim": 26,
+  "state_dim": 416,
+  "action_dim": 2
+}

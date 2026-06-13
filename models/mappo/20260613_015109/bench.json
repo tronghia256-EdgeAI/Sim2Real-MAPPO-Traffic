@@ -1,0 +1,14 @@
+{
+  "run_id": "20260613_015109",
+  "algo": "mappo",
+  "num_agents": 16,
+  "global_steps": 100000,
+  "episodes": 92,
+  "elapsed_seconds": 42255.5,
+  "mean_steps_per_second": 2.37,
+  "projected_hours_2M_steps": 234.75,
+  "projected_hours_2M_x5_seeds": 1173.76,
+  "device": "cpu",
+  "ckpt_dir": "models\\mappo\\20260613_015109",
+  "log_dir": "logs\\rl\\20260613_015109"
+}

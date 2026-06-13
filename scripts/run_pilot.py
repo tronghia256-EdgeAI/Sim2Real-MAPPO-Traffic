@@ -96,6 +96,8 @@ def run_training(args: argparse.Namespace, net_dir: Path) -> Path:
         "--seed", str(args.seed),
         "--total-timesteps", str(args.total_timesteps),
         "--rollout-horizon", str(args.rollout_horizon),
+        "--min-green-time", str(args.min_green_time),
+        "--max-green-time", str(args.max_green_time),
         "--ckpt-dir", "models/mappo",
         "--log-dir", "logs/rl",
     ]
@@ -145,7 +147,8 @@ def verify_run_config(run_dir: Path) -> dict:
 # ---------------------------------------------------------------------------
 
 def evaluate_checkpoint(
-    run_dir: Path, net_dir: Path, seed: int, max_steps: int
+    run_dir: Path, net_dir: Path, seed: int, max_steps: int,
+    min_green_time: int = 15, max_green_time: int = 60,
 ) -> dict:
     import numpy as np
     import torch
@@ -161,12 +164,16 @@ def evaluate_checkpoint(
     ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
 
     tls_ids, lane_groups = load_lane_groups_json(str(net_dir / "lane_groups.json"))
+    # green times must match the trained config — max_green_time scales the
+    # green_timer_norm obs feature, so a mismatch silently skews the policy input
     env_cfg = build_default_config(
         sumo_cfg_path=str(net_dir / "sumo_config_eval.sumocfg"),
         gui=False,
         tls_ids=tls_ids,
         manual_lane_groups=lane_groups,
         max_steps=max_steps,
+        min_green_time=min_green_time,
+        max_green_time=max_green_time,
     )
     tripinfo_path = Path(tempfile.gettempdir()) / f"pilot_tripinfo_{run_dir.name}.xml"
     env = MappoTrafficEnv(
@@ -229,6 +236,8 @@ def write_report(
             "algo": args.algo,
             "seed": args.seed,
             "total_timesteps": args.total_timesteps,
+            "min_green_time": args.min_green_time,
+            "max_green_time": args.max_green_time,
             "schema_version": run_cfg["env_cfg"]["version"],
             "num_agents": len(run_cfg["tls_ids"]),
         },
@@ -240,6 +249,7 @@ def write_report(
 
     flat = {
         "network": args.network, "algo": args.algo, "seed": args.seed,
+        "min_green": args.min_green_time, "max_green": args.max_green_time,
         "steps": bench["global_steps"], "wall_clock_s": bench["elapsed_seconds"],
         "mean_sps": bench["mean_steps_per_second"],
         "proj_hours_2M": bench["projected_hours_2M_steps"],
@@ -278,6 +288,8 @@ def main() -> None:
     parser.add_argument("--total-timesteps", type=int, default=100_000)
     parser.add_argument("--rollout-horizon", type=int, default=128)
     parser.add_argument("--eval-max-steps", type=int, default=1080)
+    parser.add_argument("--min-green-time", type=int, default=15)
+    parser.add_argument("--max-green-time", type=int, default=60)
     parser.add_argument("--run-dir", type=str, default=None,
                         help="skip training; resume reporting from an existing "
                              "completed run dir (e.g. models/mappo/<run_id>)")
@@ -295,7 +307,9 @@ def main() -> None:
         run_dir = run_training(args, net_dir)
     run_cfg = verify_run_config(run_dir)
     eval_metrics = evaluate_checkpoint(run_dir, net_dir, seed=args.seed + 1000,
-                                       max_steps=args.eval_max_steps)
+                                       max_steps=args.eval_max_steps,
+                                       min_green_time=args.min_green_time,
+                                       max_green_time=args.max_green_time)
     out_dir = write_report(args, run_dir, run_cfg, eval_metrics)
 
     bench = json.loads((run_dir / "bench.json").read_text(encoding="utf-8"))

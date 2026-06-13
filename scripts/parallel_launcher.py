@@ -29,15 +29,17 @@ Features
 - Graceful Ctrl+C           terminates all children, marks them 'killed'.
 
 Usage (from project root):
-    # full default campaign: {n2_corridor, n3_grid} x 5 seeds, MAPPO, 2M steps
-    python scripts/parallel_launcher.py
+    # full default campaign (paper VI-A/VI-C): {n2_corridor, n3_grid}
+    #   x MAPPO x {proxy, privileged} x 5 seeds, 2M steps
+    #   = 20 jobs. Add IPPO (proxy-only baseline) for the canonical 30-job matrix:
+    python scripts/parallel_launcher.py --algos mappo ippo
+
+    # MAPPO proxy arm only (skip the privileged upper bound)
+    python scripts/parallel_launcher.py --obs-modes proxy
 
     # laptop smoke: tiny budget, 2 workers
     python scripts/parallel_launcher.py --total-timesteps 2048 --max-workers 2 \
-        --seeds 42 123 --networks n2_corridor
-
-    # server: 10 workers, include the IPPO baseline matrix
-    python scripts/parallel_launcher.py --max-workers 10 --algos mappo ippo
+        --seeds 42 123 --networks n2_corridor --obs-modes proxy
 
     # passthrough overrides for train_ppo.py
     python scripts/parallel_launcher.py -- --rollout-horizon 256 --policy-lr 1e-4
@@ -66,10 +68,11 @@ DEFAULT_SEEDS = (42, 123, 456, 789, 1337)
 
 @dataclass
 class Job:
-    name: str                    # e.g. n3_grid_mappo_seed42
+    name: str                    # e.g. n3_grid_mappo_proxy_seed42
     network: str
     algo: str
     seed: int
+    obs_mode: str
     cmd: List[str]
     log_path: Path
     ckpt_dir: Path
@@ -90,6 +93,7 @@ class Job:
             "network": self.network,
             "algo": self.algo,
             "seed": self.seed,
+            "obs_mode": self.obs_mode,
             "status": self.status,
             "pid": self.pid,
             "started_at": self.started_at,
@@ -112,26 +116,35 @@ def build_jobs(args: argparse.Namespace, campaign_dir: Path, passthrough: List[s
             raise SystemExit(f"missing {missing} — run generate_networks.py / generate_demand.py")
 
         for algo in args.algos:
-            for seed in args.seeds:
-                name = f"{network}_{algo}_seed{seed}"
-                ckpt_dir = campaign_dir / "models" / name
-                log_dir = campaign_dir / "tblogs" / name
-                cmd = [
-                    sys.executable, str(ROOT / "experiment" / "runners" / "train_ppo.py"),
-                    "--mode", "train",
-                    "--algo", algo,
-                    "--sumo-cfg", str(sumo_cfg),
-                    "--lane-groups", str(lane_groups),
-                    "--seed", str(seed),
-                    "--total-timesteps", str(args.total_timesteps),
-                    "--rollout-horizon", str(args.rollout_horizon),
-                    "--ckpt-dir", str(ckpt_dir),
-                    "--log-dir", str(log_dir),
-                ] + passthrough
-                jobs.append(Job(
-                    name=name, network=network, algo=algo, seed=seed, cmd=cmd,
-                    log_path=campaign_dir / f"{name}.log", ckpt_dir=ckpt_dir,
-                ))
+            for obs_mode in args.obs_modes:
+                # privileged is the MAPPO upper-bound arm (paper VI-C); the IPPO
+                # baseline isolates centralized-training value on the deployable
+                # proxy obs, so (ippo, privileged) is not part of the design.
+                if obs_mode == "privileged" and algo != "mappo":
+                    print(f"[skip]   {network}_{algo}_{obs_mode}: privileged is mappo-only")
+                    continue
+                for seed in args.seeds:
+                    name = f"{network}_{algo}_{obs_mode}_seed{seed}"
+                    ckpt_dir = campaign_dir / "models" / name
+                    log_dir = campaign_dir / "tblogs" / name
+                    cmd = [
+                        sys.executable, str(ROOT / "experiment" / "runners" / "train_ppo.py"),
+                        "--mode", "train",
+                        "--algo", algo,
+                        "--obs-mode", obs_mode,
+                        "--sumo-cfg", str(sumo_cfg),
+                        "--lane-groups", str(lane_groups),
+                        "--seed", str(seed),
+                        "--total-timesteps", str(args.total_timesteps),
+                        "--rollout-horizon", str(args.rollout_horizon),
+                        "--ckpt-dir", str(ckpt_dir),
+                        "--log-dir", str(log_dir),
+                    ] + passthrough
+                    jobs.append(Job(
+                        name=name, network=network, algo=algo, seed=seed,
+                        obs_mode=obs_mode, cmd=cmd,
+                        log_path=campaign_dir / f"{name}.log", ckpt_dir=ckpt_dir,
+                    ))
     return jobs
 
 
@@ -304,6 +317,10 @@ def main() -> int:
     parser.add_argument("--networks", nargs="+", default=["n2_corridor", "n3_grid"],
                         choices=["n1", "n2_corridor", "n3_grid"])
     parser.add_argument("--algos", nargs="+", default=["mappo"], choices=["mappo", "ippo"])
+    parser.add_argument("--obs-modes", nargs="+", default=["proxy", "privileged"],
+                        choices=["proxy", "privileged"],
+                        help="obs arms to train; privileged is mappo-only "
+                             "(VI-C upper bound). noise is eval-time only, not here.")
     parser.add_argument("--seeds", nargs="+", type=int, default=list(DEFAULT_SEEDS))
     parser.add_argument("--total-timesteps", type=int, default=2_000_000)
     parser.add_argument("--rollout-horizon", type=int, default=128)
@@ -324,7 +341,9 @@ def main() -> int:
     jobs = build_jobs(args, campaign_dir, passthrough)
     total = len(jobs)
     print(f"campaign {campaign_id}: {total} jobs "
-          f"({len(args.networks)} nets x {len(args.algos)} algos x {len(args.seeds)} seeds), "
+          f"({len(args.networks)} nets x {len(args.algos)} algos x "
+          f"{len(args.obs_modes)} obs-modes x {len(args.seeds)} seeds, "
+          f"minus ippo-privileged), "
           f"max_workers={args.max_workers}, stagger={args.stagger}s")
     print(f"artifacts -> {campaign_dir}")
 

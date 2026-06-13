@@ -150,8 +150,9 @@ class StateExtractor:
         Normalisation cap for green timer (seconds).
     stop_speed_px_s : float
         Speed threshold for "halted" classification.
-        Calibrate: 0.5 m/s × px_per_meter / fps
-        (HALT_SPEED_THRESHOLD_MPS=0.5 from VisionLaneMetrics).
+        Calibrate: 0.1 m/s × px_per_meter / fps
+        (HALT_SPEED_THRESHOLD_MPS=0.1 from VisionLaneMetrics; B1/B1b fix —
+        training, SUMO _lane_metrics, and state_config all use 0.1 m/s).
     """
 
     # ── FIX-1: 5 lane features matching DEFAULT_LANE_FEATURE_NAMES ───────────
