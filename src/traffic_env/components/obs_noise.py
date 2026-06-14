@@ -42,8 +42,11 @@ from measured detector statistics (YOLO confusion matrix + ROI geometry
 evaluation) before the numbers enter the paper — see NoiseConfig.is_calibrated.
 """
 
+import dataclasses
+import json
 from dataclasses import dataclass, field
-from typing import Dict, Mapping, Optional, Sequence, Tuple
+from pathlib import Path
+from typing import Any, Dict, Mapping, Optional, Sequence, Tuple, Union
 
 import numpy as np
 
@@ -85,6 +88,10 @@ class NoiseConfig:
     camera_dropout_approaches: Tuple[int, ...] = ()  # approach slots to zero (0..max_lanes-1)
     delay_steps: int = 0                              # 0 or 1
 
+    # True once parameters come from a measured III-E calibration file
+    # (configs/noise_config.json via from_json / calibrate_noise.py).
+    calibrated: bool = False
+
     def validate(self) -> None:
         if self.scale < 0:
             raise ValueError("scale must be >= 0")
@@ -99,12 +106,14 @@ class NoiseConfig:
 
     @property
     def is_calibrated(self) -> bool:
-        """False while the PLACEHOLDER fields hold their default values.
+        """True once parameters have a measured basis.
 
-        Robustness numbers must not enter the paper until both placeholders have
-        been replaced with measured detector statistics.
+        Either the explicit ``calibrated`` flag is set (loaded from a III-E
+        calibration file), or the two PLACEHOLDER fields no longer hold their
+        default values. Robustness numbers must not enter the paper until this
+        is True.
         """
-        return not (
+        return bool(self.calibrated) or not (
             self.class_flip_rate == 0.05 and self.occupancy_bias_sigma == 0.08
         )
 
@@ -113,6 +122,26 @@ class NoiseConfig:
         new = NoiseConfig(**{f: getattr(self, f) for f in self.__slots__})  # type: ignore[attr-defined]
         new.scale = float(scale)
         return new
+
+    @classmethod
+    def from_json(cls, path: Union[str, Path]) -> "NoiseConfig":
+        """Load a calibrated config written by calibrate_noise.py.
+
+        Accepts either a flat dict of fields or a ``{"params": {...}}`` wrapper
+        (the calibrate_noise.py output, which also carries provenance/error
+        metadata that is ignored here). Loading a file implies ``calibrated``
+        unless the file explicitly says otherwise.
+        """
+        data = json.loads(Path(path).read_text(encoding="utf-8"))
+        params = data.get("params", data)
+        field_names = {f.name for f in dataclasses.fields(cls)}
+        kwargs: Dict[str, Any] = {k: v for k, v in params.items() if k in field_names}
+        if kwargs.get("camera_dropout_approaches") is not None:
+            kwargs["camera_dropout_approaches"] = tuple(kwargs["camera_dropout_approaches"])
+        cfg = cls(**kwargs)
+        cfg.calibrated = bool(params.get("calibrated", True))
+        cfg.validate()
+        return cfg
 
 
 @dataclass(slots=True)

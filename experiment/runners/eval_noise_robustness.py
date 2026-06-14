@@ -203,11 +203,17 @@ def main() -> None:
     if "obs_rms" in ckpt:
         obs_rms.load_state_dict(ckpt["obs_rms"])
 
-    calib = NoiseConfig()
+    noise_cfg_path = ROOT / "configs" / "noise_config.json"
+    if noise_cfg_path.exists():
+        calib = NoiseConfig.from_json(noise_cfg_path)
+        print(f"[noise] loaded calibrated config from {noise_cfg_path}")
+    else:
+        calib = NoiseConfig()
     if not calib.is_calibrated:
         print("⚠ [noise] NoiseConfig placeholders (class_flip_rate, "
               "occupancy_bias_sigma) are UNCALIBRATED — results are NOT paper-ready "
-              "until set from measured detector statistics.")
+              "until set from measured detector statistics. Run "
+              "experiment/runners/calibrate_noise.py to produce configs/noise_config.json.")
 
     conditions = build_conditions(args.scales, probe_cfg.max_lanes_per_tls, base_kwargs={
         "queue_calib_sigma": calib.queue_calib_sigma,
