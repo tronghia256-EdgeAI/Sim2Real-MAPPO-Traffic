@@ -135,6 +135,10 @@ class ObservationConfig:
     # "privileged": proxy features + PRIVILEGED_EXTRA_LANE_FEATURE_NAMES from
     # exact simulator state — upper-bound arm, never deployable.
     obs_mode: str = "proxy"
+    # ablation (VI-F): when True, reproduce the pre-S1 blind-spot obs — take the
+    # raw deduped controlled lanes [:max_lanes] as individual slots instead of
+    # per-approach edge aggregation (so only 4 of 8 lanes are seen).
+    lane_truncated: bool = False
 
     def validate(self) -> None:
         if not self.lane_feature_names:
@@ -199,6 +203,11 @@ class RewardConfig:
     low_speed_threshold: float = 0.20
     jam_speed_threshold: float = 0.50
     jam_queue_threshold: float = 0.50
+    # ablation switches (VI-F). Defaults reproduce reward 1.2.0:
+    #   pressure_signed=True   -> signed (sum_red - sum_green)/n   (else one-sided max(.,0), pre-1.2.0 R3)
+    #   queue_mean_of_squares=True -> mean(q^2) anti-starvation     (else mean(q)^2, pre-1.2.0 R4)
+    pressure_signed: bool = True
+    queue_mean_of_squares: bool = True
 
     def validate(self) -> None:
         if self.reward_scale <= 0:
@@ -417,6 +426,15 @@ def build_default_config(
     manual_lane_groups: Optional[Dict[str, Tuple[List[str], List[str]]]] = None,
     debug: bool = False,
     reward_scale: float = 1.0,
+    # --- ablation hooks (VI-F); all default to the reward-1.2.0 / schema-1.1.0 behaviour ---
+    reward_weights: Optional[Dict[str, float]] = None,
+    pressure_signed: bool = True,
+    queue_mean_of_squares: bool = True,
+    drop_class_shares: bool = False,
+    drop_pressure_feature: bool = False,
+    lane_truncated: bool = False,
+    lane_feature_names: Optional[Tuple[str, ...]] = None,
+    tls_feature_names: Optional[Tuple[str, ...]] = None,
 ) -> TrafficEnvConfig:
     """helper constructor for scripts and experiments.
 
@@ -424,15 +442,39 @@ def build_default_config(
     per-approach feature set (8 lane features instead of 5), enlarging the obs
     vector; the reward and TLS features are untouched so the privileged arm
     differs from the proxy arm in observation only.
+
+    Ablation hooks (paper VI-F): ``drop_class_shares`` removes the two YOLO
+    class-share features, ``drop_pressure_feature`` removes the TLS pressure
+    feature, ``lane_truncated`` reproduces the pre-S1 blind-spot obs, and
+    ``pressure_signed`` / ``queue_mean_of_squares`` toggle the reward-1.2.0 fixes.
+    ``lane_feature_names`` / ``tls_feature_names`` override the derived tuples
+    verbatim (used by eval to rebuild an ablation checkpoint's exact obs space).
     """
-    if obs_mode == "privileged":
-        lane_feature_names: Tuple[str, ...] = (
-            DEFAULT_LANE_FEATURE_NAMES + PRIVILEGED_EXTRA_LANE_FEATURE_NAMES
-        )
-    elif obs_mode == "proxy":
-        lane_feature_names = DEFAULT_LANE_FEATURE_NAMES
-    else:
-        raise ValueError(f"unknown obs_mode {obs_mode!r}; expected 'proxy' or 'privileged'")
+    if lane_feature_names is None:
+        if obs_mode == "privileged":
+            lane_feature_names = (
+                DEFAULT_LANE_FEATURE_NAMES + PRIVILEGED_EXTRA_LANE_FEATURE_NAMES
+            )
+        elif obs_mode == "proxy":
+            lane_feature_names = DEFAULT_LANE_FEATURE_NAMES
+        else:
+            raise ValueError(f"unknown obs_mode {obs_mode!r}; expected 'proxy' or 'privileged'")
+        if drop_class_shares:
+            lane_feature_names = tuple(
+                n for n in lane_feature_names
+                if n not in ("motorbike_share", "heavy_vehicle_share")
+            )
+
+    if tls_feature_names is None:
+        tls_feature_names = DEFAULT_TLS_FEATURE_NAMES
+        if drop_pressure_feature:
+            tls_feature_names = tuple(n for n in tls_feature_names if n != "pressure_norm")
+
+    reward = RewardConfig(reward_scale=reward_scale,
+                          pressure_signed=pressure_signed,
+                          queue_mean_of_squares=queue_mean_of_squares)
+    if reward_weights is not None:
+        reward.weights = dict(reward_weights)
 
     cfg = TrafficEnvConfig(
         sim=SimConfig(
@@ -451,13 +493,15 @@ def build_default_config(
         ),
         observation=ObservationConfig(
             lane_feature_names=lane_feature_names,
+            tls_feature_names=tls_feature_names,
             queue_cap=queue_cap,
             waiting_cap=waiting_cap,
             speed_cap=speed_cap,
             use_external_state=use_external_state,
             obs_mode=obs_mode,
+            lane_truncated=lane_truncated,
         ),
-        reward=RewardConfig(reward_scale=reward_scale),
+        reward=reward,
         manual_lane_groups=manual_lane_groups,
     )
     cfg.validate()

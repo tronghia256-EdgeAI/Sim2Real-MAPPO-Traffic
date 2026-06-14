@@ -123,28 +123,40 @@ def build_jobs(args: argparse.Namespace, campaign_dir: Path, passthrough: List[s
                 if obs_mode == "privileged" and algo != "mappo":
                     print(f"[skip]   {network}_{algo}_{obs_mode}: privileged is mappo-only")
                     continue
-                for seed in args.seeds:
-                    name = f"{network}_{algo}_{obs_mode}_seed{seed}"
-                    ckpt_dir = campaign_dir / "models" / name
-                    log_dir = campaign_dir / "tblogs" / name
-                    cmd = [
-                        sys.executable, str(ROOT / "experiment" / "runners" / "train_ppo.py"),
-                        "--mode", "train",
-                        "--algo", algo,
-                        "--obs-mode", obs_mode,
-                        "--sumo-cfg", str(sumo_cfg),
-                        "--lane-groups", str(lane_groups),
-                        "--seed", str(seed),
-                        "--total-timesteps", str(args.total_timesteps),
-                        "--rollout-horizon", str(args.rollout_horizon),
-                        "--ckpt-dir", str(ckpt_dir),
-                        "--log-dir", str(log_dir),
-                    ] + passthrough
-                    jobs.append(Job(
-                        name=name, network=network, algo=algo, seed=seed,
-                        obs_mode=obs_mode, cmd=cmd,
-                        log_path=campaign_dir / f"{name}.log", ckpt_dir=ckpt_dir,
-                    ))
+                for preset in args.reward_presets:
+                    for ablation in args.obs_ablations:
+                        for seed in args.seeds:
+                            # main arms (full/none) keep the canonical name so
+                            # build_paper_artifacts/campaign_figures discover them;
+                            # ablation arms get a suffix and stay out of the main set.
+                            suffix = ""
+                            if preset != "full":
+                                suffix += f"_r-{preset}"
+                            if ablation != "none":
+                                suffix += f"_o-{ablation}"
+                            name = f"{network}_{algo}_{obs_mode}{suffix}_seed{seed}"
+                            ckpt_dir = campaign_dir / "models" / name
+                            log_dir = campaign_dir / "tblogs" / name
+                            cmd = [
+                                sys.executable, str(ROOT / "experiment" / "runners" / "train_ppo.py"),
+                                "--mode", "train",
+                                "--algo", algo,
+                                "--obs-mode", obs_mode,
+                                "--reward-preset", preset,
+                                "--obs-ablation", ablation,
+                                "--sumo-cfg", str(sumo_cfg),
+                                "--lane-groups", str(lane_groups),
+                                "--seed", str(seed),
+                                "--total-timesteps", str(args.total_timesteps),
+                                "--rollout-horizon", str(args.rollout_horizon),
+                                "--ckpt-dir", str(ckpt_dir),
+                                "--log-dir", str(log_dir),
+                            ] + passthrough
+                            jobs.append(Job(
+                                name=name, network=network, algo=algo, seed=seed,
+                                obs_mode=obs_mode, cmd=cmd,
+                                log_path=campaign_dir / f"{name}.log", ckpt_dir=ckpt_dir,
+                            ))
     return jobs
 
 
@@ -322,6 +334,13 @@ def main() -> int:
                         help="obs arms to train; privileged is mappo-only "
                              "(VI-C upper bound). noise is eval-time only, not here.")
     parser.add_argument("--seeds", nargs="+", type=int, default=list(DEFAULT_SEEDS))
+    parser.add_argument("--reward-presets", nargs="+", default=["full"],
+                        choices=["full", "no_pressure", "no_throughput", "queue_only",
+                                 "unsigned_pressure", "mean_then_square"],
+                        help="VI-F reward ablation arms (default: full only)")
+    parser.add_argument("--obs-ablations", nargs="+", default=["none"],
+                        choices=["none", "no_class_shares", "no_pressure_feature", "lane_truncated"],
+                        help="VI-F observation ablation arms (default: none only)")
     parser.add_argument("--total-timesteps", type=int, default=2_000_000)
     parser.add_argument("--rollout-horizon", type=int, default=128)
     parser.add_argument("--max-workers", type=int, default=3,

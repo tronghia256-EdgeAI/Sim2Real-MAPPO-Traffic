@@ -1,0 +1,13 @@
+<additional>
+    <vTypeDistribution id="mixed_traffic">
+
+        <vType id="moto" vClass="motorcycle" length="2.0" width="0.8" accel="4.5" decel="6.0" sigma="0.7" maxSpeed="15" speedDev="0.4" color="0,1,0" probability="0.5000" latAlignment="arbitrary" minGapLat="0.12" maxSpeedLat="1.5" minGap="1.0" impatience="0.7" jmIgnoreKeepClear="1.0" />
+
+        <vType id="car" vClass="passenger" length="4.8" width="1.8" accel="2.6" decel="4.5" sigma="0.5" maxSpeed="20" speedDev="0.15" color="1,1,1" probability="0.3148" latAlignment="center" minGapLat="0.5" minGap="2.0" />
+
+        <vType id="truck" vClass="truck" length="7.5" width="2.5" accel="1.5" decel="3.5" sigma="0.4" maxSpeed="16" speedDev="0.1" color="1,0.5,0" probability="0.1296" latAlignment="center" minGap="2.5" />
+
+        <vType id="bus" vClass="bus" length="12.0" width="2.5" accel="1.2" decel="3.0" sigma="0.3" maxSpeed="14" speedDev="0.05" color="1,1,0" probability="0.0556" latAlignment="center" minGap="2.5" />
+
+    </vTypeDistribution>
+</additional>

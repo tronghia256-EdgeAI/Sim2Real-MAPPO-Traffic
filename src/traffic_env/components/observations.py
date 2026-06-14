@@ -199,6 +199,8 @@ class ObservationBuilder:
     _lane_length_cache: Dict[str, float] = field(default_factory=dict, init=False)
     # W5-9: emit PRIVILEGED_EXTRA_LANE_FEATURE_NAMES from exact SUMO state
     _privileged: bool = field(default=False, init=False)
+    # VI-F ablation: reproduce the pre-S1 blind-spot obs (raw lanes, no approach aggregation)
+    _lane_truncated: bool = field(default=False, init=False)
 
     def __post_init__(self) -> None:
         self.config.validate()
@@ -214,6 +216,7 @@ class ObservationBuilder:
         }
         self._external_lane_cache = None
         self._privileged = self.config.observation.obs_mode == "privileged"
+        self._lane_truncated = bool(getattr(self.config.observation, "lane_truncated", False))
         self._fast_metrics_enabled = tc is not None
         self._lane_length_cache = {}
         if tc is not None:
@@ -534,6 +537,11 @@ class ObservationBuilder:
         lane_ids = self._safe_lane_ids_for_tls(tls_id)
         if self.config.observation.use_external_state and self._external_lane_cache is not None:
             return [(lane_id, [lane_id]) for lane_id in lane_ids]
+
+        # VI-F blind-spot ablation: raw lanes as individual slots (no approach
+        # aggregation), so build_local_obs sees only the first max_lanes lanes.
+        if self._lane_truncated:
+            return [(lane_id, [lane_id]) for lane_id in lane_ids[: self.config.max_lanes_per_tls]]
 
         groups: Dict[str, List[str]] = {}
         order: List[str] = []

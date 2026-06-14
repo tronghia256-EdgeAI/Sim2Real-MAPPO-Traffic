@@ -1,0 +1,10 @@
+<configuration>
+    <input>
+        <net-file value="intersections.net.xml"/>
+        <route-files value="demand_eval.rou.xml"/>
+        <additional-files value="vtypes_moto73.add.xml"/>
+    </input>
+    <processing>
+        <time-to-teleport value="-1"/> <lateral-resolution value="0.4"/>
+    </processing>
+</configuration>

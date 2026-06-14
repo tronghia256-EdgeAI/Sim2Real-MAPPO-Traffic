@@ -66,8 +66,49 @@ except Exception as _tb_exc:  # pragma: no cover
     SummaryWriter = None  # type: ignore[assignment]
     _TB_IMPORT_ERROR = _tb_exc
 
-from src.traffic_env.config import build_default_config, load_lane_groups_json
+from src.traffic_env.config import build_default_config, load_lane_groups_json, DEFAULT_REWARD_WEIGHTS
 from src.traffic_env.envs.multi_agent import MappoTrafficEnv
+
+
+# ---------------------------------------------------------------------
+# Ablation presets (paper VI-F). Defaults reproduce reward 1.2.0 / schema 1.1.0.
+# ---------------------------------------------------------------------
+REWARD_PRESETS = ("full", "no_pressure", "no_throughput", "queue_only",
+                  "unsigned_pressure", "mean_then_square")
+OBS_ABLATIONS = ("none", "no_class_shares", "no_pressure_feature", "lane_truncated")
+
+
+def _reward_preset_kwargs(preset: str) -> Dict[str, Any]:
+    w = dict(DEFAULT_REWARD_WEIGHTS)
+    kw: Dict[str, Any] = {"pressure_signed": True, "queue_mean_of_squares": True}
+    if preset == "full":
+        pass
+    elif preset == "no_pressure":
+        w["pressure"] = 0.0
+    elif preset == "no_throughput":
+        w["throughput"] = 0.0
+    elif preset == "queue_only":
+        w = {k: 0.0 for k in w}; w["queue"] = -1.0
+    elif preset == "unsigned_pressure":
+        kw["pressure_signed"] = False
+    elif preset == "mean_then_square":
+        kw["queue_mean_of_squares"] = False
+    else:
+        raise ValueError(f"unknown reward preset {preset!r}")
+    kw["reward_weights"] = w
+    return kw
+
+
+def _obs_ablation_kwargs(ablation: str) -> Dict[str, Any]:
+    if ablation in (None, "none"):
+        return {}
+    if ablation == "no_class_shares":
+        return {"drop_class_shares": True}
+    if ablation == "no_pressure_feature":
+        return {"drop_pressure_feature": True}
+    if ablation == "lane_truncated":
+        return {"lane_truncated": True}
+    raise ValueError(f"unknown obs ablation {ablation!r}")
 
 
 class _NoopWriter:
@@ -485,6 +526,10 @@ def make_env(args: argparse.Namespace) -> Tuple[MappoTrafficEnv, Any]:
         if tls_ids is None:
             tls_ids = json_tls_ids
 
+    ablation_kwargs: Dict[str, Any] = {}
+    ablation_kwargs.update(_reward_preset_kwargs(getattr(args, "reward_preset", "full")))
+    ablation_kwargs.update(_obs_ablation_kwargs(getattr(args, "obs_ablation", "none")))
+
     env_cfg = build_default_config(
         sumo_cfg_path=args.sumo_cfg,
         gui=args.gui,
@@ -503,6 +548,7 @@ def make_env(args: argparse.Namespace) -> Tuple[MappoTrafficEnv, Any]:
         obs_mode=getattr(args, "obs_mode", "proxy"),
         debug=args.debug,
         reward_scale=args.reward_scale,
+        **ablation_kwargs,
     )
     env = MappoTrafficEnv(
         config=env_cfg,
@@ -592,6 +638,8 @@ def train(args: argparse.Namespace) -> None:
         "run_id": run_id,
         "algo": algo,
         "critic_arch": "independent_local" if algo == "ippo" else "central_multihead",
+        "reward_preset": getattr(args, "reward_preset", "full"),
+        "obs_ablation": getattr(args, "obs_ablation", "none"),
         "lane_groups_file": getattr(args, "lane_groups", None),
         "env_cfg": env_cfg.to_dict(),
         "train_cfg": asdict(train_cfg),
@@ -1300,6 +1348,10 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--obs-mode", choices=["proxy", "privileged"], default="proxy",
                         help="proxy=camera-computable obs (deployable); "
                              "privileged=proxy + exact-SUMO features (VI-C upper bound)")
+    parser.add_argument("--reward-preset", choices=list(REWARD_PRESETS), default="full",
+                        help="VI-F reward ablation (default 'full' = reward 1.2.0)")
+    parser.add_argument("--obs-ablation", choices=list(OBS_ABLATIONS), default="none",
+                        help="VI-F observation ablation (default 'none')")
     parser.add_argument("--reward-scale", type=float, default=1.0)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--tls-ids", nargs="*", default=[])

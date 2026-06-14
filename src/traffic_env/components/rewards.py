@@ -244,7 +244,13 @@ class RewardCalculator:
             self._safe_metric(lane_cache.get(lid, {}), "effective_queue_norm")
             for lid in lane_ids
         ]
-        result = float(np.clip(np.mean(np.square(q_vals)), 0.0, 1.0))
+        # 1.2.0 default: mean(q^2) (anti-starvation). Ablation queue_mean_of_squares=False
+        # reverts to the pre-1.2.0 mean(q)^2 (single-lane starvation averaged away).
+        if self.config.reward.queue_mean_of_squares:
+            value = float(np.mean(np.square(q_vals)))
+        else:
+            value = float(np.square(np.mean(q_vals)))
+        result = float(np.clip(value, 0.0, 1.0))
         logger.debug(
             "[%s] queue_penalty=%.4f (mean_q=%.4f)",
             tls_id, result, float(np.mean(q_vals)),
@@ -291,10 +297,16 @@ class RewardCalculator:
             for lid in red_lane_ids
         )
         n_total = max(len(green_lane_ids) + len(red_lane_ids), 1)
-        result  = float(np.clip((sum_red - sum_green) / n_total, -1.0, 1.0))
+        raw = (sum_red - sum_green) / n_total
+        # 1.2.0 default: SIGNED in [-1,1] (gradient on correct decisions too).
+        # Ablation pressure_signed=False reverts to the pre-1.2.0 one-sided
+        # max(red-green, 0) (zero gradient whenever allocation is already correct).
+        if not self.config.reward.pressure_signed:
+            raw = max(raw, 0.0)
+        result = float(np.clip(raw, -1.0, 1.0))
         logger.debug(
-            "[%s] pressure_penalty=%.4f (red=%.3f green=%.3f n=%d)",
-            tls_id, result, sum_red, sum_green, n_total,
+            "[%s] pressure_penalty=%.4f (red=%.3f green=%.3f n=%d signed=%s)",
+            tls_id, result, sum_red, sum_green, n_total, self.config.reward.pressure_signed,
         )
         return result
 

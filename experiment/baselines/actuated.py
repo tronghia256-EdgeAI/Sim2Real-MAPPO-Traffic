@@ -29,7 +29,7 @@ import sys
 import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
-from typing import List
+from typing import List, Optional
 
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:
@@ -96,6 +96,7 @@ def run_actuated(
     seed: int,
     duration_s: int,
     tripinfo_path: Path,
+    extra_args: Optional[List[str]] = None,
 ) -> None:
     import traci
 
@@ -105,6 +106,7 @@ def run_actuated(
         # CLI --additional-files REPLACES the cfg value -> must list vtypes too
         + ["--additional-files", f"{vtypes_path},{add_path}"]
         + ["--tripinfo-output", str(tripinfo_path), "--tripinfo-output.write-unfinished"]
+        + list(extra_args or [])
     )
     traci.start(cmd, label="actuated_run")
     conn = traci.getConnection("actuated_run")
