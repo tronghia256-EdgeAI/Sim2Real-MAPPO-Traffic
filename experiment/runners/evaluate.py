@@ -417,6 +417,12 @@ def _parse_args() -> argparse.Namespace:
 
 
 if __name__ == "__main__":
+    print(
+        "\n[DEPRECATED] evaluate.py reports PROXY metrics (queue-based 'waiting', "
+        "per-step 'throughput') and is NOT paper-grade.\n"
+        "             For tripinfo-based, multi-seed, statistically-tested tables "
+        "use:  experiment/runners/eval_compare.py\n"
+    )
     args = _parse_args()
     evaluate(
         n_episodes=args.episodes,
