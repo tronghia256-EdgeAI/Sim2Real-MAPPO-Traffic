@@ -83,6 +83,11 @@ class BaseSumoEnv:
         self.sumo_conn: Any = None
         self.sim_started = False
         self.last_command: List[str] = []
+        # cumulative arrivals since the current simulation started. SUMO's
+        # simulation.getArrivedNumber() is PER STEP, not cumulative, so we sum it
+        # over every simulationStep() here to expose a correct monotonic throughput
+        # counter to the RL layer (see MappoTrafficEnv._get_total_passed).
+        self._arrived_cumulative: float = 0.0
 
     # ------------------------------------------------------------------
     # command builders
@@ -156,6 +161,8 @@ class BaseSumoEnv:
         extra_args: Optional[Sequence[str]] = None,
     ) -> Any:
         """start or reload the sumo simulation."""
+        # new simulation (fresh start or reload) -> arrivals counter restarts
+        self._arrived_cumulative = 0.0
         cmd = self._build_sumo_cmd(seed=seed, extra_args=extra_args)
         self.last_command = list(cmd)
 
@@ -200,9 +207,22 @@ class BaseSumoEnv:
             for _ in range(int(steps)):
                 self.sumo_conn.simulationStep()
                 advanced += 1
+                # getArrivedNumber() reports arrivals in THIS step only; sum to
+                # keep a cumulative count across the whole episode.
+                try:
+                    self._arrived_cumulative += float(
+                        self.sumo_conn.simulation.getArrivedNumber()
+                    )
+                except Exception:
+                    pass
             return advanced
         except Exception as exc:
             raise RuntimeError("sumo simulation crashed during sim_step") from exc
+
+    @property
+    def arrived_cumulative(self) -> float:
+        """cumulative vehicles that reached their destination since sim start."""
+        return float(self._arrived_cumulative)
 
     def close(self) -> None:
         """close the sumo connection safely and idempotently."""

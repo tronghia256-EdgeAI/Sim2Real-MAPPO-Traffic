@@ -305,15 +305,22 @@ class MappoTrafficEnv(BaseSumoEnv):
 
     def _get_lanes(self, tls_id: str) -> List[str]:
         try:
-            return list(self.sumo_conn.trafficlight.getControlledLanes(tls_id))
+            lanes = self.sumo_conn.trafficlight.getControlledLanes(tls_id)
         except Exception:
             return []
+        # getControlledLanes() returns one entry per signalised link, so a lane
+        # with several movements repeats. Dedup (order-preserving) and drop
+        # internal ':'-lanes so the reward iterates each approach lane exactly
+        # once — matching ObservationBuilder._safe_lane_ids_for_tls(). Without
+        # this, queue/low-speed/waiting penalties over-weight multi-movement
+        # lanes (reward and observation used different lane multisets).
+        return [l for l in dict.fromkeys(lanes) if l and not str(l).startswith(":")]
 
     def _get_total_passed(self) -> float:
-        try:
-            return float(self.sumo_conn.simulation.getArrivedNumber())
-        except Exception:
-            return 0.0
+        # cumulative arrivals since episode start (base_sumo sums the per-step
+        # simulation.getArrivedNumber()). Returning the raw per-step value here
+        # was a bug: prev/current deltas and episode throughput were meaningless.
+        return float(self.arrived_cumulative)
 
 
 __all__ = ["MappoTrafficEnv"]
