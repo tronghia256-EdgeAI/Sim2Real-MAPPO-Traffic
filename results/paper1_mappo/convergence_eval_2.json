@@ -1,0 +1,11 @@
+{
+  "200k": {
+    "n_trips": 14888,
+    "mean_travel_time_s": 342.88010478237504,
+    "mean_waiting_time_s": 155.2017060720043,
+    "mean_time_loss_s": 262.92445123589465,
+    "p95_waiting_time_s": 681.6499999999996,
+    "total_co2_mg": NaN,
+    "total_fuel_mg": NaN
+  }
+}

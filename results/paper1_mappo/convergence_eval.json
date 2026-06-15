@@ -1,0 +1,47 @@
+{
+  "50k": {
+    "n_trips": 14740,
+    "mean_travel_time_s": 345.52815468113977,
+    "mean_waiting_time_s": 170.28527815468115,
+    "mean_time_loss_s": 265.9104816824966,
+    "p95_waiting_time_s": 733.0499999999993,
+    "total_co2_mg": NaN,
+    "total_fuel_mg": NaN
+  },
+  "100k": {
+    "n_trips": 14888,
+    "mean_travel_time_s": 368.5077915099409,
+    "mean_waiting_time_s": 168.8486700698549,
+    "mean_time_loss_s": 288.28423898441696,
+    "p95_waiting_time_s": 607.6499999999996,
+    "total_co2_mg": NaN,
+    "total_fuel_mg": NaN
+  },
+  "150k": {
+    "n_trips": 14888,
+    "mean_travel_time_s": 363.96769210102093,
+    "mean_waiting_time_s": 166.32415368081678,
+    "mean_time_loss_s": 284.42837385814084,
+    "p95_waiting_time_s": 624.0,
+    "total_co2_mg": NaN,
+    "total_fuel_mg": NaN
+  },
+  "best": {
+    "n_trips": 14888,
+    "mean_travel_time_s": 315.61667114454593,
+    "mean_waiting_time_s": 141.5405024180548,
+    "mean_time_loss_s": 235.57386082751208,
+    "p95_waiting_time_s": 611.6499999999996,
+    "total_co2_mg": NaN,
+    "total_fuel_mg": NaN
+  },
+  "fixed": {
+    "n_trips": 14888,
+    "mean_travel_time_s": 400.41227834497585,
+    "mean_waiting_time_s": 202.51625470177325,
+    "mean_time_loss_s": 320.7251356797421,
+    "p95_waiting_time_s": 746.0,
+    "total_co2_mg": NaN,
+    "total_fuel_mg": NaN
+  }
+}
