@@ -1,6 +1,6 @@
 {
   "schema_name": "mappo_traffic_control_production",
-  "version": "3.1.0",
+  "version": "3.1.1",
   "tls_ids": [
     "tls_0",
     "tls_1"
@@ -329,93 +329,80 @@
     }
   },
   "features": {
+    "_authority_note": "Names/order MUST match DEFAULT_LANE_FEATURE_NAMES + DEFAULT_TLS_FEATURE_NAMES in src/traffic_env/config.py (obs schema 1.2.0). This block is documentation only; no runtime code reads it. Bug D1 fixed 2026-06-15.",
     "lane_features": [
       {
         "index": 0,
-        "name": "vehicle_count",
-        "description": "Number of actively tracked vehicles in lane",
-        "normalization": {
-          "type": "min_max",
-          "max_value": 20,
-          "range": [
-            0.0,
-            1.0
-          ],
-          "formula": "clamp(vehicle_count / vehicle_cap, 0, 1)"
-        },
-        "missing_value": 0.0
-      },
-      {
-        "index": 1,
-        "name": "queue_length",
-        "description": "Number of stopped/queued vehicles (speed <= stop_speed_px_s)",
-        "normalization": {
-          "type": "min_max",
-          "max_value": 50,
-          "range": [
-            0.0,
-            1.0
-          ],
-          "formula": "clamp(queue_length / queue_cap, 0, 1)"
-        },
-        "missing_value": 0.0
-      },
-      {
-        "index": 2,
-        "name": "waiting_time",
-        "description": "Average waiting time of vehicles in lane (seconds)",
-        "normalization": {
-          "type": "min_max",
-          "max_value": 300,
-          "range": [
-            0.0,
-            1.0
-          ],
-          "formula": "clamp(avg_waiting_time / waiting_cap, 0, 1)"
-        },
-        "missing_value": 0.0
-      },
-      {
-        "index": 3,
-        "name": "avg_speed",
-        "description": "Average speed of vehicles in lane (m/s)",
-        "normalization": {
-          "type": "min_max",
-          "max_value": 15.0,
-          "range": [
-            0.0,
-            1.0
-          ],
-          "formula": "clamp(avg_speed / speed_cap, 0, 1)"
-        },
-        "missing_value": 0.0
-      },
-      {
-        "index": 4,
-        "name": "occupancy",
-        "description": "Fraction of lane occupied by vehicle bboxes",
+        "name": "effective_queue_norm",
+        "description": "Length-weighted halted-vehicle queue, normalized by lane length.",
         "normalization": {
           "type": "clip",
           "range": [
             0.0,
             1.0
           ],
-          "formula": "clamp(total_bbox_area / (lane_length_px * lane_width_px), 0, 1)"
+          "sumo_source": "sum(halted_vehicle_length) / lane_length (halt threshold 0.1 m/s)",
+          "vision_proxy": "sum(CLASS_LEN_M * px_per_meter) / lane_length_px"
         },
         "missing_value": 0.0
       },
       {
-        "index": 5,
-        "name": "throughput",
-        "description": "Number of vehicles exiting lane per second",
+        "index": 1,
+        "name": "occupancy_norm",
+        "description": "1D lane occupancy fraction (vehicle length coverage along the lane).",
         "normalization": {
-          "type": "min_max",
-          "max_value": 10,
+          "type": "clip",
           "range": [
             0.0,
             1.0
           ],
-          "formula": "clamp(vehicles_exited_per_sec / throughput_cap, 0, 1)"
+          "sumo_source": "getLastStepOccupancy() / 100 (1D)",
+          "vision_proxy": "sum(vehicle_length_px) / lane_length_px (1D)"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 2,
+        "name": "avg_speed_norm",
+        "description": "Mean vehicle speed in lane, normalized by speed_cap.",
+        "normalization": {
+          "type": "clip",
+          "range": [
+            0.0,
+            1.0
+          ],
+          "sumo_source": "mean(getSpeed()) / speed_cap",
+          "vision_proxy": "mean(ByteTrack delta_pos/delta_t) / speed_cap"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 3,
+        "name": "motorbike_share",
+        "description": "Fraction of vehicles that are motorcycles (YOLO class 3).",
+        "normalization": {
+          "type": "clip",
+          "range": [
+            0.0,
+            1.0
+          ],
+          "sumo_source": "motorcycle type count / total",
+          "vision_proxy": "YOLO cls 3 count / total"
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 4,
+        "name": "heavy_vehicle_share",
+        "description": "Fraction of vehicles that are buses or trucks (YOLO classes 1+4).",
+        "normalization": {
+          "type": "clip",
+          "range": [
+            0.0,
+            1.0
+          ],
+          "sumo_source": "(bus+truck) type count / total",
+          "vision_proxy": "YOLO cls (1+4) count / total"
         },
         "missing_value": 0.0
       }
@@ -423,76 +410,92 @@
     "tls_features": [
       {
         "index": 0,
-        "name": "pressure",
-        "description": "Bidirectional pressure: (group_A_vehicle + group_A_queue) - (group_B_vehicle + group_B_queue)",
-        "normalization": {
-          "type": "tanh",
-          "scale": 70.0,
-          "range": [
-            -1.0,
-            1.0
-          ],
-          "formula": "tanh(raw_pressure / (queue_cap + vehicle_cap))"
-        },
-        "notes": "Pressure can be negative (preference for other direction). Tanh ensures stable [-1,1] range for training stability."
-      },
-      {
-        "index": 1,
-        "name": "phase_id",
-        "description": "Current phase of traffic light (0 or 1)",
+        "name": "phase_one_hot_0",
+        "description": "One-hot bit for SUMO phase 0 (Group A green, dirs 0,1).",
         "normalization": {
           "type": "one_hot",
-          "num_classes": 2,
           "range": [
             0.0,
             1.0
           ]
         },
-        "notes": "One-hot encoding: phase_0=[1,0], phase_1=[0,1]. In observation: [phase_one_hot[0]], index 1 is occupied by phase_one_hot[1]"
+        "missing_value": 0.0
       },
       {
-        "index": 2,
-        "name": "time_in_phase",
-        "description": "Time elapsed in current phase (seconds)",
+        "index": 1,
+        "name": "phase_one_hot_1",
+        "description": "One-hot bit for SUMO phase 1 (yellow A->B). Not seen at deployment (yellow handled by Arduino).",
         "normalization": {
-          "type": "min_max",
-          "max_value": 90,
+          "type": "one_hot",
           "range": [
             0.0,
             1.0
-          ],
-          "formula": "clamp(time_in_phase_sec / max_green_time, 0, 1)"
+          ]
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 2,
+        "name": "phase_one_hot_2",
+        "description": "One-hot bit for SUMO phase 2 (Group B green, dirs 2,3). action 1 maps here, NOT phase 1.",
+        "normalization": {
+          "type": "one_hot",
+          "range": [
+            0.0,
+            1.0
+          ]
         },
         "missing_value": 0.0
       },
       {
         "index": 3,
-        "name": "accident_flag",
-        "description": "Binary indicator of accident/anomaly in TLS lanes (from external detector)",
+        "name": "phase_one_hot_3",
+        "description": "One-hot bit for SUMO phase 3 (yellow B->A). Not seen at deployment.",
         "normalization": {
-          "type": "binary",
+          "type": "one_hot",
+          "range": [
+            0.0,
+            1.0
+          ]
+        },
+        "missing_value": 0.0
+      },
+      {
+        "index": 4,
+        "name": "green_timer_norm",
+        "description": "Time elapsed in current green phase, normalized by max_green_time.",
+        "normalization": {
+          "type": "clip",
           "range": [
             0.0,
             1.0
           ],
-          "formula": "1.0 if accident_detected else 0.0"
+          "formula": "clamp(green_timer_sec / max_green_time, 0, 1)  (max_green_time = 60 s)"
         },
-        "missing_value": 0.0,
-        "notes": "Can be sourced from external anomaly detector or TLS state"
+        "missing_value": 0.0
+      },
+      {
+        "index": 5,
+        "name": "pressure_norm",
+        "description": "Signed phase pressure (schema 1.1.0): 0.5 = balanced; >0.5 = Group A more queued.",
+        "normalization": {
+          "type": "clip",
+          "range": [
+            0.0,
+            1.0
+          ],
+          "formula": "clip(0.5 * (1 + mean_q(group_A) - mean_q(group_B)), 0, 1)"
+        },
+        "notes": "Signed (S2 fix): the policy can tell WHICH group is congested. Was unsigned abs(qa-qb)/4."
       }
     ]
   },
   "temporal_smoothing": {
     "enabled": true,
     "method": "ema",
-    "alpha": 0.3,
-    "description": "Exponential Moving Average for smoother state transitions. new_state = alpha * current + (1-alpha) * prev_state",
-    "apply_to": [
-      "vehicle_count",
-      "queue_length",
-      "avg_speed",
-      "pressure"
-    ]
+    "alpha": 0.6,
+    "description": "Exponential Moving Average over the full obs vector: new = alpha * current + (1-alpha) * prev. RUNTIME VALUE is read from system_params.temporal_smoothing.buffer_ema_alpha (this block must stay in sync with it).",
+    "apply_to": "all_observation_features"
   },
   "roi_association": {
     "primary_method": "polygon_iou",

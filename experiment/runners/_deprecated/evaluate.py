@@ -10,12 +10,14 @@ mean ± 95% CI for:
     - mean_speed_mps   : mean avg lane speed (m/s) per step
     - final_throughput : vehicles that exited the network at episode end
 
+DEPRECATED — proxy metrics, not paper-grade. Use experiment/runners/eval_compare.py.
+
 Usage
 -----
-    python experiment/runners/evaluate.py
-    python experiment/runners/evaluate.py --episodes 5 --seed 42
-    python experiment/runners/evaluate.py --no-mappo          # skip slow policy load
-    python experiment/runners/evaluate.py --gui               # launch SUMO GUI
+    python experiment/runners/_deprecated/evaluate.py
+    python experiment/runners/_deprecated/evaluate.py --episodes 5 --seed 42
+    python experiment/runners/_deprecated/evaluate.py --no-mappo   # skip slow policy load
+    python experiment/runners/_deprecated/evaluate.py --gui        # launch SUMO GUI
 """
 
 from __future__ import annotations
@@ -28,8 +30,8 @@ from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 
-# ── project root on sys.path ──────────────────────────────────────────────────
-_ROOT = Path(__file__).resolve().parents[2]
+# ── project root on sys.path (file is 3 levels deep: experiment/runners/_deprecated) ──
+_ROOT = Path(__file__).resolve().parents[3]
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
 

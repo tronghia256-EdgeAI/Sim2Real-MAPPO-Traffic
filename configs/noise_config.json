@@ -1,0 +1,24 @@
+{
+  "calibrated": true,
+  "generated": "2026-06-14T22:17:47",
+  "n_samples": 0,
+  "params": {
+    "queue_calib_sigma": 0.1,
+    "speed_sigma_mps": 1.0,
+    "speed_low_regime_mps": 3.0,
+    "speed_high_regime_factor": 0.25,
+    "pressure_calib_sigma": 0.1,
+    "speed_cap_mps": 15.0,
+    "class_flip_rate": 0.05,
+    "occupancy_bias_sigma": 0.08,
+    "calibrated": true
+  },
+  "provenance": {
+    "queue_calib_sigma": "default (docs/paper1_tsc/state.md basis)",
+    "speed_sigma_mps": "default (docs/paper1_tsc/state.md basis)",
+    "pressure_calib_sigma": "default (docs/paper1_tsc/state.md basis)",
+    "class_flip_rate": "default (docs/paper1_tsc/state.md basis)",
+    "occupancy_bias_sigma": "manual override"
+  },
+  "per_feature_error": {}
+}

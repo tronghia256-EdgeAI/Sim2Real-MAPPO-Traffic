@@ -193,7 +193,7 @@ def calibrate(
         "class_flip_rate": base.class_flip_rate,
         "occupancy_bias_sigma": base.occupancy_bias_sigma,
     }
-    prov: Dict[str, str] = {k: "default (docs/state.md basis)" for k in params}
+    prov: Dict[str, str] = {k: "default (docs/paper1_tsc/state.md basis)" for k in params}
     n_samples = 0
 
     def _n(feat: str) -> int:

@@ -158,7 +158,7 @@ def main() -> None:
     print("\nAll scenarios generated successfully.")
     print("Run evaluation with:")
     for name in SCENARIOS:
-        print(f"  python experiment/runners/test_ppo.py  # update SUMO_CFG_PATH to evaluation/{name}/")
+        print(f"  python experiment/runners/eval_ppo_gui.py  # update SUMO_CFG_PATH to evaluation/{name}/")
 
 
 if __name__ == "__main__":

@@ -95,7 +95,15 @@ class ActorNet:
         return {"net." + k: v for k, v in self.net.state_dict().items()}
 
     def load_state_dict(self, sd: Dict[str, Any], strict: bool = True):
-        self.net.load_state_dict(sd, strict=strict)
+        # state_dict() prepends "net."; mirror that here by stripping a leading
+        # "net." so keys match self.net's bare "{idx}.weight" naming. WITHOUT
+        # this the keys never match self.net (a Sequential) — strict load fails
+        # and the strict=False fallback silently leaves EVERY weight at random
+        # init (the actor is then an untrained network). This broke both
+        # eval_compare's MAPPO column and the live deployment policy.
+        # Guarded by tests/test_policy_loader.py::test_loaded_weights_match_checkpoint.
+        stripped = {(k[4:] if k.startswith("net.") else k): v for k, v in sd.items()}
+        self.net.load_state_dict(stripped, strict=strict)
 
     @property
     def _module(self):

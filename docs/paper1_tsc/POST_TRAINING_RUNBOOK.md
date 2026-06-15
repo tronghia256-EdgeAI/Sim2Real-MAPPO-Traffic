@@ -183,5 +183,5 @@ parsed from tripinfo and land in `figures/tables/<scen>_emissions.tex` (TABLE-10
 - **FIG-2 network diagram** panel (SUMO-GUI / netedit screenshot; the demand-profile panel is auto).
 
 ## Deprecated (do not use — proxy metrics)
-`experiment/runners/evaluate.py`, `experiment/runners/compare_traffic_metrics.py`
+`experiment/runners/_deprecated/evaluate.py`, `experiment/runners/_deprecated/compare_traffic_metrics.py`
 — both print a deprecation notice; superseded by `eval_compare.py`.

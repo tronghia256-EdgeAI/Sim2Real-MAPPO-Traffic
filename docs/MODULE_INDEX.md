@@ -127,10 +127,10 @@ Episode execution scripts that instantiate an environment and run a full evaluat
 | File | Description | Paper |
 |------|-------------|-------|
 | `__init__.py` | Package marker for `experiment.runners`. | — |
-| `evaluate.py` | Unified comparative runner: executes MAPPO, Max Pressure, and SOTL for N independent episodes (default 10) with the same seeds; prints a side-by-side mean ± 95% CI table for all metrics. | 1 |
-| `test_ppo.py` | Interactive SUMO GUI runner for a single MAPPO policy episode; intended for visual inspection and debugging. | 1 |
-| `test_baseline.py` | Interactive SUMO GUI runner for a single fixed-time baseline episode (60 s green / 3 s yellow per phase). | 1 |
-| `compare_traffic_metrics.py` | Single-episode comparison of PPO vs fixed-time controller; collects step-by-step halted/waiting/speed time series and produces a 3-panel matplotlib figure. | 1 |
+| `eval_ppo_gui.py` | Interactive SUMO GUI runner for a single MAPPO policy episode; intended for visual inspection and debugging. (was `test_ppo.py`) | 1 |
+| `eval_baseline_gui.py` | Interactive SUMO GUI runner for a single fixed-time baseline episode (60 s green / 3 s yellow per phase). (was `test_baseline.py`) | 1 |
+| `_deprecated/evaluate.py` | **DEPRECATED** — use `eval_compare.py`. Unified comparative runner: MAPPO/MaxPressure/SOTL for N episodes; proxy metrics. | 1 |
+| `_deprecated/compare_traffic_metrics.py` | **DEPRECATED** — use `eval_compare.py`. Gutted to a deprecation stub (was a PPO-vs-fixed 3-panel figure). | 1 |
 
 ### `experiment/ablation/`
 
@@ -252,8 +252,8 @@ Artefacts produced by evaluation runs. Organised by paper.
 | `paper1_mappo/training_curves/fps.png` | Simulation throughput (frames per second) over training. | 1 |
 | `paper1_mappo/training_curves/Screenshot*.png` | TensorBoard screenshots of the training dashboard. | 1 |
 | `paper1_mappo/eval_tables/metrics_comparison.csv` | Structured comparison table: waiting time, queue length, speed, throughput for baseline vs MAPPO across Normal and Hardcore demand modes. | 1 |
-| `paper2_vision/` | Reserved for Paper 2 detection accuracy, precision/recall, and alert latency results. | 2 |
-| `paper3_sim2real/` | Reserved for Paper 3 sim-to-real gap quantification and latency profiling results. | 3 |
+| `paper2_perception/` | Reserved for Paper 2 (Perception) detection accuracy, precision/recall, and alert-latency results. | 2 |
+| `paper3_system/` | Reserved for Paper 3 (System) end-to-end latency/throughput and fail-safe results. | 3 |
 | `graphs/Figure_1_normal.png` | Time-series comparison plot (normal traffic demand): halted vehicles and speed for PPO vs fixed-time. | 1 |
 | `graphs/Figure_2_hardcore.png` | Time-series comparison plot (high-demand scenario): halted vehicles and speed for PPO vs fixed-time. | 1 |
 

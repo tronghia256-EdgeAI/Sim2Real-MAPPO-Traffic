@@ -8,8 +8,8 @@ the paper's main result tables (TABLE-4 / TABLE-5).
 
 Why this exists
 ---------------
-The previous comparison paths (experiment/runners/evaluate.py,
-compare_traffic_metrics.py) reported PROXY metrics (mean-queue × step_length as
+The previous comparison paths (experiment/runners/_deprecated/evaluate.py,
+_deprecated/compare_traffic_metrics.py) reported PROXY metrics (mean-queue × step_length as
 "waiting", a broken per-step getArrivedNumber as "throughput") and defaulted to
 the legacy checkpoint. This harness instead:
 

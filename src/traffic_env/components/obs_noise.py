@@ -63,15 +63,15 @@ _LANE_FEATURE_OFFSET: Dict[str, int] = {
 class NoiseConfig:
     """Calibrated sensing-noise parameters (1x envelope at scale=1.0).
 
-    Values with a measured basis are taken from docs/state.md; the two flagged
+    Values with a measured basis are taken from docs/paper1_tsc/state.md; the two flagged
     PLACEHOLDER fields must be replaced from detector-stack evaluation before use
     in the paper. ``scale`` multiplies the whole envelope for the {0, 0.5, 1, 2}
     robustness sweep.
     """
 
     # measured-basis parameters
-    queue_calib_sigma: float = 0.10        # +/-10% px-per-meter calibration (docs/state.md)
-    speed_sigma_mps: float = 1.0           # ByteTrack +/-1 m/s at low speed (docs/state.md)
+    queue_calib_sigma: float = 0.10        # +/-10% px-per-meter calibration (docs/paper1_tsc/state.md)
+    speed_sigma_mps: float = 1.0           # ByteTrack +/-1 m/s at low speed (docs/paper1_tsc/state.md)
     speed_low_regime_mps: float = 3.0      # full sigma below this speed
     speed_high_regime_factor: float = 0.25 # sigma multiplier above the low regime
     pressure_calib_sigma: float = 0.10     # inherits queue calibration error

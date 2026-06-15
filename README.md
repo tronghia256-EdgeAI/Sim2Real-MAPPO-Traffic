@@ -26,6 +26,13 @@
 
 ---
 
+> **📑 Three papers, one codebase.** This repository serves **Paper 1 — TSC** (camera-observable
+> MAPPO traffic-signal control), **Paper 2 — Perception** (YOLOv11 + ByteTrack: accident detection
+> + vehicle recognition), and **Paper 3 — System** (full real-time deployment). `src/` is a shared
+> library; for the exact code↔paper ownership map see **[`docs/papers/README.md`](docs/papers/README.md)**.
+
+---
+
 ## 📖 Project Overview
 
 Traffic Signal Control (TSC) using deep reinforcement learning has shown strong results in simulation — but deployed systems routinely **fail to generalize** because simulators like SUMO provide privileged metrics (exact queue lengths, per-vehicle waiting timers, network throughput counts) that do not exist in the real world.
@@ -275,7 +282,7 @@ python experiment/runners/train_ppo.py \
   --checkpoint models/mappo/20260418_215140/best_model.pt
 
 # Evaluate with SUMO GUI (visual inspection)
-python experiment/runners/test_ppo.py
+python experiment/runners/eval_ppo_gui.py
 ```
 
 Training logs are written to `logs/rl/<run_id>/`:
@@ -441,9 +448,9 @@ Sim2Real-MAPPO-Traffic/
 ├── experiment/
 │   ├── runners/
 │   │   ├── train_ppo.py             # MAPPO training entry point
-│   │   ├── test_ppo.py              # Policy evaluation with SUMO GUI
-│   │   ├── evaluate.py              # Headless multi-seed evaluation
-│   │   └── compare_traffic_metrics.py  # Baseline vs MAPPO comparison
+│   │   ├── eval_compare.py          # Canonical multi-seed tripinfo comparison (TABLE-4/5)
+│   │   ├── eval_ppo_gui.py          # Policy evaluation with SUMO GUI
+│   │   └── _deprecated/             # retired runners (evaluate.py, compare_traffic_metrics.py)
 │   ├── baselines/
 │   │   ├── max_pressure.py          # Max Pressure controller
 │   │   └── sotl.py                  # Self-Organising Traffic Lights
@@ -464,8 +471,8 @@ Sim2Real-MAPPO-Traffic/
 │   ├── paper1_mappo/
 │   │   ├── eval_tables/             # metrics_comparison.csv
 │   │   └── training_curves/         # TensorBoard screenshots
-│   ├── paper2_vision/               # Vision pipeline results (future)
-│   └── paper3_sim2real/             # Sim-to-real gap analysis (future)
+│   ├── paper2_perception/          # Paper 2 (Perception) results (future)
+│   └── paper3_system/              # Paper 3 (System/deployment) results (future)
 ├── figures/                         # Publication-ready PDF figures (LaTeX)
 │   ├── training_curve.pdf           # Fig: reward convergence
 │   ├── training_losses.pdf          # Fig: policy/value loss
