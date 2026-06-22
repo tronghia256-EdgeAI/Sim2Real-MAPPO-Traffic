@@ -336,7 +336,8 @@ def main() -> int:
     parser.add_argument("--seeds", nargs="+", type=int, default=list(DEFAULT_SEEDS))
     parser.add_argument("--reward-presets", nargs="+", default=["full"],
                         choices=["full", "no_pressure", "no_throughput", "queue_only",
-                                 "unsigned_pressure", "mean_then_square"],
+                                 "unsigned_pressure", "mean_then_square", "no_delay",
+                                 "no_low_speed"],
                         help="VI-F reward ablation arms (default: full only)")
     parser.add_argument("--obs-ablations", nargs="+", default=["none"],
                         choices=["none", "no_class_shares", "no_pressure_feature", "lane_truncated"],

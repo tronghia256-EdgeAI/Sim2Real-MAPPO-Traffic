@@ -74,7 +74,8 @@ from src.traffic_env.envs.multi_agent import MappoTrafficEnv
 # Ablation presets (paper VI-F). Defaults reproduce reward 1.2.0 / schema 1.1.0.
 # ---------------------------------------------------------------------
 REWARD_PRESETS = ("full", "no_pressure", "no_throughput", "queue_only",
-                  "unsigned_pressure", "mean_then_square")
+                  "unsigned_pressure", "mean_then_square", "no_delay",
+                  "no_low_speed")
 OBS_ABLATIONS = ("none", "no_class_shares", "no_pressure_feature", "lane_truncated")
 
 
@@ -93,6 +94,10 @@ def _reward_preset_kwargs(preset: str) -> Dict[str, Any]:
         kw["pressure_signed"] = False
     elif preset == "mean_then_square":
         kw["queue_mean_of_squares"] = False
+    elif preset == "no_delay":
+        w["waiting_time"] = 0.0          # VI-F: drop the linear halted-queue delay proxy (w_w=0)
+    elif preset == "no_low_speed":
+        w["low_speed_penalty"] = 0.0     # VI-F: drop the near-inert, vision-noisy low-speed term
     else:
         raise ValueError(f"unknown reward preset {preset!r}")
     kw["reward_weights"] = w

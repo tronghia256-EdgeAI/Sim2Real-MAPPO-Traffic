@@ -56,11 +56,11 @@ class VisionLaneMetrics:
     This class has NO SUMO dependency and is safe to instantiate in
     deployment without traci/libsumo.
 
-    COCO class indices used:
+    Custom YOLO class indices (NOT COCO — see NOTES.md §4.1):
         2  = car
         3  = motorcycle  (motorbike)
-        5  = bus         (heavy)
-        7  = truck       (heavy)
+        1  = bus         (heavy)
+        4  = truck       (heavy)
 
     Call signature
     --------------

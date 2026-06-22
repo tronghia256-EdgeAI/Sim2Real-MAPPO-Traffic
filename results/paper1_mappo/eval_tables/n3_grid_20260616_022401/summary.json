@@ -1,0 +1,773 @@
+{
+  "scenario": "n3_grid",
+  "split": "eval",
+  "seeds": [
+    42,
+    123,
+    456,
+    789,
+    1337
+  ],
+  "max_steps": 1080,
+  "min_green_time": 15,
+  "max_green_time": 60,
+  "reference": "mappo",
+  "aggregates": {
+    "mappo": {
+      "mean_travel_time_s": {
+        "mean": 275.9409860290167,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 1,
+        "values": [
+          275.9409860290167
+        ]
+      },
+      "mean_waiting_time_s": {
+        "mean": 106.33236163353035,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 1,
+        "values": [
+          106.33236163353035
+        ]
+      },
+      "mean_time_loss_s": {
+        "mean": 195.98889978506182,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 1,
+        "values": [
+          195.98889978506182
+        ]
+      },
+      "p95_waiting_time_s": {
+        "mean": 377.7299999999999,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 1,
+        "values": [
+          377.7299999999999
+        ]
+      },
+      "n_trips": {
+        "mean": 14888.0,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 1,
+        "values": [
+          14888.0
+        ]
+      },
+      "total_co2_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN
+        ]
+      },
+      "total_fuel_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN
+        ]
+      }
+    },
+    "webster": {
+      "mean_travel_time_s": {
+        "mean": 340.7701894695001,
+        "std": 44.86745094262689,
+        "ci95": 39.32805475166149,
+        "n": 5,
+        "values": [
+          376.9795137023106,
+          357.39918054809243,
+          264.0074556689952,
+          340.7739726027397,
+          364.6908248253627
+        ]
+      },
+      "mean_waiting_time_s": {
+        "mean": 152.5807328583101,
+        "std": 30.239544166417062,
+        "ci95": 26.506129134968578,
+        "n": 5,
+        "values": [
+          171.40569586243956,
+          165.39669532509404,
+          99.0222326706072,
+          159.64150684931508,
+          167.43753358409458
+        ]
+      },
+      "mean_time_loss_s": {
+        "mean": 261.0851954735634,
+        "std": 44.630500317248384,
+        "ci95": 39.12035837104378,
+        "n": 5,
+        "values": [
+          296.8709202041913,
+          277.55373052122513,
+          184.45553936055887,
+          262.1708369863014,
+          284.37495029554003
+        ]
+      },
+      "p95_waiting_time_s": {
+        "mean": 526.4,
+        "std": 121.3766863940518,
+        "ci95": 106.39135649102326,
+        "n": 5,
+        "values": [
+          617.0,
+          566.0,
+          318.0,
+          529.0,
+          602.0
+        ]
+      },
+      "n_trips": {
+        "mean": 14830.4,
+        "std": 128.79751550398788,
+        "ci95": 112.89599999999999,
+        "n": 5,
+        "values": [
+          14888.0,
+          14888.0,
+          14888.0,
+          14600.0,
+          14888.0
+        ]
+      },
+      "total_co2_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      },
+      "total_fuel_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      }
+    },
+    "actuated": {
+      "mean_travel_time_s": {
+        "mean": 310.9102095647501,
+        "std": 18.682062566599512,
+        "ci95": 16.375549848657716,
+        "n": 5,
+        "values": [
+          289.93840677055346,
+          306.33664696399785,
+          339.85988715744224,
+          315.97064750134336,
+          302.44545943041373
+        ]
+      },
+      "mean_waiting_time_s": {
+        "mean": 144.77796883396027,
+        "std": 15.00069241118694,
+        "ci95": 13.148686632863855,
+        "n": 5,
+        "values": [
+          128.20822138635143,
+          139.26685921547556,
+          167.81072004298764,
+          149.96742342826437,
+          138.6366200967222
+        ]
+      },
+      "mean_time_loss_s": {
+        "mean": 230.7949965072541,
+        "std": 18.896833763114998,
+        "ci95": 16.56380510270461,
+        "n": 5,
+        "values": [
+          209.77323549167116,
+          226.13472393874258,
+          260.09836781300373,
+          236.03713259000534,
+          221.93152270284793
+        ]
+      },
+      "p95_waiting_time_s": {
+        "mean": 555.8,
+        "std": 97.89126620899333,
+        "ci95": 85.8054780535602,
+        "n": 5,
+        "values": [
+          462.0,
+          467.0,
+          681.0,
+          631.0,
+          538.0
+        ]
+      },
+      "n_trips": {
+        "mean": 14888.0,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "values": [
+          14888.0,
+          14888.0,
+          14888.0,
+          14888.0,
+          14888.0
+        ]
+      },
+      "total_co2_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      },
+      "total_fuel_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      }
+    },
+    "maxpressure": {
+      "mean_travel_time_s": {
+        "mean": 319.93702310585707,
+        "std": 40.872952735526816,
+        "ci95": 35.82672269704738,
+        "n": 5,
+        "values": [
+          351.2466415905427,
+          333.6851155292853,
+          309.7548361096185,
+          253.50302256851154,
+          351.49549973132724
+        ]
+      },
+      "mean_waiting_time_s": {
+        "mean": 134.74959699086511,
+        "std": 27.827269304387066,
+        "ci95": 24.391676990778684,
+        "n": 5,
+        "values": [
+          152.76410531972058,
+          146.37070123589467,
+          132.087184309511,
+          87.59558033315422,
+          154.93041375604514
+        ]
+      },
+      "mean_time_loss_s": {
+        "mean": 239.84937506716818,
+        "std": 40.54749546552877,
+        "ci95": 35.54144682188842,
+        "n": 5,
+        "values": [
+          270.9693236163353,
+          253.5118383933369,
+          230.0521943847394,
+          173.81134000537347,
+          270.90217893605586
+        ]
+      },
+      "p95_waiting_time_s": {
+        "mean": 488.7299999999999,
+        "std": 103.02482467832688,
+        "ci95": 90.30524044948882,
+        "n": 5,
+        "values": [
+          537.6499999999996,
+          523.0,
+          502.0,
+          310.0,
+          571.0
+        ]
+      },
+      "n_trips": {
+        "mean": 14888.0,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 5,
+        "values": [
+          14888.0,
+          14888.0,
+          14888.0,
+          14888.0,
+          14888.0
+        ]
+      },
+      "total_co2_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      },
+      "total_fuel_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      }
+    },
+    "sotl": {
+      "mean_travel_time_s": {
+        "mean": 325.96597903832736,
+        "std": 36.65864743800339,
+        "ci95": 32.13272123275304,
+        "n": 5,
+        "values": [
+          298.3871574422354,
+          296.28653949489524,
+          309.90818108543795,
+          382.47961308524214,
+          342.7684040838259
+        ]
+      },
+      "mean_waiting_time_s": {
+        "mean": 139.6873654926219,
+        "std": 28.319362341081295,
+        "ci95": 24.8230155554493,
+        "n": 5,
+        "values": [
+          117.35263299301451,
+          119.74758194519076,
+          126.15092692101021,
+          184.48727077315777,
+          150.69841483073617
+        ]
+      },
+      "mean_time_loss_s": {
+        "mean": 246.24110425592121,
+        "std": 36.94961582479605,
+        "ci95": 32.3877662688844,
+        "n": 5,
+        "values": [
+          218.23342154755505,
+          216.4622259537883,
+          230.531881380978,
+          303.5108107745012,
+          262.46718162278347
+        ]
+      },
+      "p95_waiting_time_s": {
+        "mean": 509.8,
+        "std": 132.59788836931003,
+        "ci95": 116.22717369014873,
+        "n": 5,
+        "values": [
+          420.0,
+          417.0,
+          440.0,
+          728.0,
+          544.0
+        ]
+      },
+      "n_trips": {
+        "mean": 14887.8,
+        "std": 0.4472135954999579,
+        "ci95": 0.39199999999999996,
+        "n": 5,
+        "values": [
+          14888.0,
+          14888.0,
+          14888.0,
+          14887.0,
+          14888.0
+        ]
+      },
+      "total_co2_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      },
+      "total_fuel_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      }
+    },
+    "fixed": {
+      "mean_travel_time_s": {
+        "mean": 330.31246434752296,
+        "std": 37.51826762168774,
+        "ci95": 32.88621154564827,
+        "n": 5,
+        "values": [
+          290.5586378291241,
+          339.54527135948416,
+          322.5337184309511,
+          309.64447877485225,
+          389.2802153432032
+        ]
+      },
+      "mean_waiting_time_s": {
+        "mean": 151.73708938088106,
+        "std": 28.570106015833073,
+        "ci95": 25.042802076905144,
+        "n": 5,
+        "values": [
+          120.26464266523375,
+          155.49422353573348,
+          148.54097259537883,
+          137.4236969371306,
+          196.96191117092866
+        ]
+      },
+      "mean_time_loss_s": {
+        "mean": 250.89752137322517,
+        "std": 37.7282722743465,
+        "ci95": 33.07028873979127,
+        "n": 5,
+        "values": [
+          210.6725779150994,
+          260.1267960773778,
+          243.29269881783986,
+          230.2751403815153,
+          310.1203936742934
+        ]
+      },
+      "p95_waiting_time_s": {
+        "mean": 547.3899999999998,
+        "std": 122.14852843976476,
+        "ci95": 107.06790587360908,
+        "n": 5,
+        "values": [
+          417.0,
+          578.6499999999996,
+          526.0,
+          477.2999999999993,
+          738.0
+        ]
+      },
+      "n_trips": {
+        "mean": 14882.4,
+        "std": 12.521980673998822,
+        "ci95": 10.975999999999999,
+        "n": 5,
+        "values": [
+          14888.0,
+          14888.0,
+          14888.0,
+          14888.0,
+          14860.0
+        ]
+      },
+      "total_co2_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      },
+      "total_fuel_mg": {
+        "mean": NaN,
+        "std": 0.0,
+        "ci95": 0.0,
+        "n": 0,
+        "values": [
+          NaN,
+          NaN,
+          NaN,
+          NaN,
+          NaN
+        ]
+      }
+    }
+  },
+  "stats": {
+    "mean_travel_time_s": {
+      "webster": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 19.024317690877655,
+        "p_holm": 1.0
+      },
+      "actuated": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 11.247370610533372,
+        "p_holm": 1.0
+      },
+      "maxpressure": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 13.75146791382236,
+        "p_holm": 1.0
+      },
+      "sotl": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 15.346691442123989,
+        "p_holm": 1.0
+      },
+      "fixed": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 16.46061962145692,
+        "p_holm": 1.0
+      }
+    },
+    "mean_waiting_time_s": {
+      "webster": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 30.310754417287427,
+        "p_holm": 1.0
+      },
+      "actuated": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 26.55487399779835,
+        "p_holm": 1.0
+      },
+      "maxpressure": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 21.088920480601665,
+        "p_holm": 1.0
+      },
+      "sotl": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 23.878325531777108,
+        "p_holm": 1.0
+      },
+      "fixed": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 29.923288981363395,
+        "p_holm": 1.0
+      }
+    },
+    "mean_time_loss_s": {
+      "webster": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 24.932970852839105,
+        "p_holm": 1.0
+      },
+      "actuated": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 15.080958100882528,
+        "p_holm": 1.0
+      },
+      "maxpressure": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 18.28667482240616,
+        "p_holm": 1.0
+      },
+      "sotl": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 20.407723813093245,
+        "p_holm": 1.0
+      },
+      "fixed": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 21.884880044902268,
+        "p_holm": 1.0
+      }
+    },
+    "p95_waiting_time_s": {
+      "webster": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 28.242781155015212,
+        "p_holm": 1.0
+      },
+      "actuated": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 32.03850305865421,
+        "p_holm": 1.0
+      },
+      "maxpressure": {
+        "p_raw": 0.6666666666666666,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 22.711926830765456,
+        "p_holm": 1.0
+      },
+      "sotl": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 25.90623774029033,
+        "p_holm": 1.0
+      },
+      "fixed": {
+        "p_raw": 0.3333333333333333,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 30.99435503023437,
+        "p_holm": 1.0
+      }
+    },
+    "n_trips": {
+      "webster": {
+        "p_raw": 1.0,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 0.38839141223433193,
+        "p_holm": 1.0
+      },
+      "actuated": {
+        "p_raw": 1.0,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 0.0,
+        "p_holm": 1.0
+      },
+      "maxpressure": {
+        "p_raw": 1.0,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 0.0,
+        "p_holm": 1.0
+      },
+      "sotl": {
+        "p_raw": 1.0,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 0.0013433818294222627,
+        "p_holm": 1.0
+      },
+      "fixed": {
+        "p_raw": 1.0,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": 0.03762833951513441,
+        "p_holm": 1.0
+      }
+    },
+    "total_co2_mg": {
+      "webster": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "actuated": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "maxpressure": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "sotl": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "fixed": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      }
+    },
+    "total_fuel_mg": {
+      "webster": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "actuated": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "maxpressure": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "sotl": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      },
+      "fixed": {
+        "p_raw": NaN,
+        "cohens_d": NaN,
+        "pct_improvement_ref_vs_method": NaN,
+        "p_holm": NaN
+      }
+    }
+  }
+}

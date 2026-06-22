@@ -39,7 +39,7 @@ queue_penalty      effective_queue_norm  → halted-vehicle fraction in ROI
 pressure_penalty   effective_queue_norm  → same, partitioned by phase group
 throughput_reward  lane vehicle-ID exits → track IDs exiting ROI per step
 switch_penalty     action logic          → no vision dependency
-waiting_penalty    waiting_time_norm     → fallback: effective_queue_norm
+waiting_penalty    effective_queue_norm  → halted-queue proxy (no privileged read)
 """
 
 import logging
@@ -320,7 +320,9 @@ class RewardCalculator:
 
         exits = Σ over this agent's lanes of |prev_step_ids \\ current_ids| —
         vehicles that left the approach lane since the last decision step
-        (crossed the stop line, modulo lane-change noise). Normalised by
+        (crossed the stop line, modulo lateral lane-change and rare SUMO-teleport
+        noise — which the deployable ByteTrack ROI-exit proxy shares identically).
+        Normalised by
         ``throughput_norm_divisor`` and clipped to [0, 1]. No cross-agent
         splitting: each agent is credited only for traffic it served, which
         is also exactly the deployable vision proxy (ByteTrack ROI exits).
@@ -424,16 +426,20 @@ class RewardCalculator:
         lane_ids: Sequence[str],
         lane_cache: LaneCache,
     ) -> float:
-        """Accumulated-delay penalty, vision-aligned.
+        """Accumulated-delay penalty — fully camera-computable (no privileged read).
 
-        Reads ``waiting_time_norm`` (SUMO per-vehicle timers / waiting_cap) when
-        available.  Falls back to ``effective_queue_norm`` as a proportional
-        proxy; the halted-vehicle fraction is directly measurable from
-        ByteTrack without per-vehicle counters.
+        The environment never populates ``waiting_time_norm`` in the lane cache:
+        neither the proxy nor the privileged builder writes it (the privileged arm
+        emits ``privileged_waiting_norm``, namespaced so the reward stays identical
+        across arms). By default this term is therefore the mean
+        ``effective_queue_norm`` (halted-queue fraction) over the agent's lanes — a
+        linear delay proxy directly measurable from ByteTrack, complementing the
+        quadratic anti-starvation queue penalty. The ``waiting_time_norm`` branch is
+        a latent hook for optional privileged-reward experiments only; it is unused
+        in both the proxy and privileged training arms.
 
-        The previous implementation multiplied by ``step_length / max_green_time``
-        which capped the output at ≤ 0.083 and rendered the term negligible.
-        That scaling is removed — both paths now return a value in [0, 1].
+        The earlier ``step_length / max_green_time`` scaling (which capped the
+        output at ≤ 0.083 and made the term negligible) is removed — value in [0, 1].
 
         Returns
         -------

@@ -181,8 +181,18 @@ $$
 |---|---|
 | Range | `[0, 1]` |
 | Default weight | `−0.3` |
-| SUMO source | `traci.lane.getWaitingTime` / `waiting_cap` |
+| SUMO source | `traci.lane.getWaitingTime` / `waiting_cap` *(latent hook — see note)* |
 | Vision proxy | halted-vehicle fraction (same as queue) |
+
+> **Note (2026-06-17) — no privileged read in practice.** The environment never
+> writes `waiting_time_norm` into the lane cache: neither the proxy nor the
+> privileged builder does (the privileged arm emits `privileged_waiting_norm`,
+> namespaced so the reward stays identical across arms). The `waiting_time_norm`
+> branch above is therefore a latent hook; in **both** training arms `s(l)` is
+> always the `effective_queue_norm` proxy, so the reward is **fully
+> camera-computable with zero privileged terms**. The paper (III-B / IV-A) is
+> framed accordingly, and the VI-F ablation tests *removing* this linear delay
+> term (`w_w=0`), not toggling a (non-existent) privileged read.
 
 **Previous bug (fixed):** The old implementation multiplied by `step_length / max_green_time` (= `5/60` = 0.083), capping the output at ≤ 0.083 and making the term functionally negligible. This division is removed.
 
