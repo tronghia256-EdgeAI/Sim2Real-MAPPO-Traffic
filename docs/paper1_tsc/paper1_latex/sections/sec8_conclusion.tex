@@ -1,0 +1,26 @@
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper addressed the persistent observation gap in reinforcement-learning-based traffic
+signal control by imposing a single, strict constraint throughout the formulation: both the
+state and the reward must be computable from a roadside camera alone. Concretely, a
+$26$-dimensional per-approach proxy observation was paired with a fully camera-computable,
+queue-centric vision-proxy reward, so that the objective optimized in simulation coincides with the
+quantity available at deployment, with no privileged simulator signal entering either the
+policy input or the training target. Across an arterial corridor and a sixteen-junction grid
+under non-stationary, motorcycle-dominant demand, the resulting MAPPO controller improved mean
+travel time over the strongest classical baseline by $[Y]\%$, while the gap to a privileged
+upper bound---the information-restriction cost---was only $[X]\%$. The policy further degraded
+gracefully across a $\{0\text{--}2\times\}$ sensing-noise envelope, retaining its advantage over
+the heuristic baselines throughout, which indicates that the approach does not depend on
+high-precision feature recovery.
+
+Taken together, these results establish that the privileged-data dependency long assumed by
+RL-based signal control is largely unnecessary for the timing objective itself: the
+camera-observable feature set is shown, in simulation, to retain the overwhelming majority of
+the task-relevant information. For practitioners in developing metropolises, this lowers the
+barrier to adaptive control from a sensing-infrastructure problem to a calibration-and-integration
+one, since a single overhead camera and a legacy two-phase controller suffice to host the policy.
+Future work will extend the action space to multi-phase ring-barrier logic with protected turns
+and will close the physical control loop in the companion field study, where the dynamics gap
+and a measured perception calibration complement the observation gap quantified here.

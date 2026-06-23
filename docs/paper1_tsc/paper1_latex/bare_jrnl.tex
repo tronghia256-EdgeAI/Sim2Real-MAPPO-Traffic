@@ -1,0 +1,91 @@
+\documentclass[journal]{IEEEtran}
+
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb,amsfonts} 
+\usepackage{booktabs}                 
+\usepackage{cite}                 
+\usepackage{url}
+\usepackage{bbm}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{float}
+\usepackage{placeins}
+\usepackage{subcaption}
+
+\graphicspath{{assets/figures/}}
+
+\ifCLASSINFOpdf
+\else
+\fi
+
+\title{Camera-Observable Multi-Agent Reinforcement Learning for Traffic Signal Control in Mixed Motorcycle-Dominant Traffic}
+
+\author{
+    Le~Trong~Nghia,
+    and~Nguyen~Thien~Bao,~\IEEEmembership{Member,~IEEE}%
+\thanks{
+    Le Trong Nghia is an undergraduate student in Robotics and Artificial Intelligence Engineering,
+    Institute of Intelligent and Interactive Technologies,
+    University of Economics Ho Chi Minh City (UEH),
+    Ho Chi Minh City 700000, Vietnam
+    (e-mail: nghiale.31241024698@st.ueh.edu.vn).
+}%
+\thanks{
+    Nguyen Thien Bao is with the Institute of Intelligent and Interactive Technologies,
+    University of Economics Ho Chi Minh City (UEH),
+    Ho Chi Minh City 700000, Vietnam
+    (e-mail: baont@ueh.edu.vn).
+}%
+\thanks{
+    Corresponding author: Nguyen Thien Bao (e-mail: baont@ueh.edu.vn).
+}%
+}
+
+\markboth{Submitted to IEEE Transactions on Intelligent Transportation Systems, June~2026}%
+{Nghia and Bao: Camera-Observable MARL for Traffic Signal Control}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\begin{IEEEkeywords}
+traffic signal control, multi-agent reinforcement learning, deployability, mixed traffic, sublane model, SUMO.
+\end{IEEEkeywords}
+
+\IEEEpeerreviewmaketitle
+
+
+\input{sections/sec1_introduction}
+\input{sections/sec2_related_work}
+\input{sections/sec3_problem_formulation}
+\input{sections/sec4_methodology}
+\input{sections/sec5_experimental_setup}
+\input{sections/sec6_results}
+\input{sections/sec7_discussion}
+\input{sections/sec8_conclusion}
+
+% \appendices
+% \input{sections/sec9_appendices}\textbf{}
+
+\section*{Acknowledgment}
+The authors would like to thank the Institute of Intelligent and Interactive Technologies (3IT), University of Economics Ho Chi Minh City (UEH), for providing the computational resources and infrastructure that supported this research.
+
+\ifCLASSOPTIONcaptionsoff
+  \newpage
+\fi
+
+\nocite{*}
+\bibliographystyle{IEEEtran}
+\bibliography{references} 
+
+
+\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{tronghia.pdf}}]{Le Trong Nghia}
+received his high school diploma in 2024. He is currently pursuing his B.S. degree in Robotics and Artificial Intelligence at the Institute of Intelligent and Interactive Technologies, University of Economics Ho Chi Minh City (UEH), Ho Chi Minh City, Vietnam. His current research interests include deep reinforcement learning, multi-agent systems, intelligent transportation systems (ITS), and computer vision.
+\end{IEEEbiography}
+\begin{IEEEbiography}[{\includegraphics[width=1in,height=1.25in,clip,keepaspectratio]{ntbao.pdf}}]{Nguyen Thien Bao}
+(Member, IEEE) received his Ph.D. degree in Computer Science. He is currently a Lecturer and Researcher with the Institute of Intelligent and Interactive Technologies, University of Economics Ho Chi Minh City (UEH), Ho Chi Minh City, Vietnam. His research expertise spans artificial intelligence, machine learning, deep learning architectures, and interactive technologies. He serves as an academic mentor and supervisor for advanced research projects in robotics and intelligent systems.
+\end{IEEEbiography}
+\end{document}

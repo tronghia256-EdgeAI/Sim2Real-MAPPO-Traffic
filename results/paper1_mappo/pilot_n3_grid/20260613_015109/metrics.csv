@@ -1,2 +1,0 @@
-network,algo,seed,min_green,max_green,steps,wall_clock_s,mean_sps,proj_hours_2M,proj_hours_2M_x5seeds,mean_travel_time_s,mean_waiting_time_s,p95_waiting_time_s,n_trips
-n3_grid,mappo,42,15,90,100000,42255.5,2.37,234.75,1173.76,367.03526329930145,173.63084363245568,669.0,14888

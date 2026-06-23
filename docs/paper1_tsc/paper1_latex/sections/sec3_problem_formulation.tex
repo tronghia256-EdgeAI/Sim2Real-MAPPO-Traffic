@@ -1,0 +1,205 @@
+\section{Problem Formulation}
+\label{sec:problem}
+
+\subsection{Dec-POMDP Definition}
+\label{sec:decpomdp}
+We formulate cooperative multi-intersection signal control as a Decentralized
+Partially Observable Markov Decision Process
+(Dec-POMDP)~\cite{oliehoek2016_decpomdp}, the canonical model for a team of agents
+that optimize a shared return under strictly local information. Each agent $i$
+controls one signalized intersection and, by construction, never accesses the global
+network state directly. The problem is the tuple
+$\langle \mathcal{N}, \mathcal{S}, \{\mathcal{A}_i\}, \{\mathcal{O}_i\},
+\mathcal{P}, \mathcal{R}, \gamma \rangle$.
+
+To keep the transition and reward maps well defined over simultaneous decisions, we
+fix the \emph{joint} action space as the Cartesian product of the per-agent action
+sets,
+\begin{equation}
+  \mathcal{A} \equiv \prod_{i=1}^{N} \mathcal{A}_i,
+  \label{eq:joint_action}
+\end{equation}
+so that a joint action is $\mathbf{a}_t = (a_{1,t}, \dots, a_{N,t}) \in \mathcal{A}$.
+The tuple components are:
+\begin{itemize}
+  \item $\mathcal{N} = \{1, \dots, N\}$: the finite set of homogeneous agents, one per
+        signalized intersection.
+  \item $\mathcal{S}$: the global state space, encoding the microscopic configuration
+        of every vehicle and signal in the network.
+  \item $\mathcal{A}_i = \{0, 1\}$: the discrete per-agent action space, composed into
+        the joint space $\mathcal{A}$ via \eqref{eq:joint_action}.
+  \item $\mathcal{O}_i$: the local observation space of agent $i$, the
+        $26$-dimensional camera-computable proxy of Section~\ref{sec:obs_space}.
+  \item $\mathcal{P}\colon \mathcal{S} \times \mathcal{A} \to \Delta(\mathcal{S})$: the
+        transition kernel induced by the microscopic traffic dynamics, which also
+        enforces all safety-critical signal timing.
+  \item $\mathcal{R}\colon \mathcal{S} \times \mathcal{A} \to \mathbb{R}^{N}$: the
+        joint reward function, returning a per-agent scalar $r_{i,t}$.
+  \item $\gamma = 0.99$: the discount factor governing the effective horizon.
+\end{itemize}
+Agents act at a fixed interval of $\Delta t = 5$~s over $1080$ decision steps
+($5400$~s) per episode. The state $\mathcal{S}$ assumed by this model is, however,
+only available in simulation; reconciling it with what a deployed controller can
+actually sense motivates the projection developed next.
+
+\subsection{The Observation Projection}
+\label{sec:projection}
+A critical challenge in deploying RL-based signal control is the discrepancy between
+the privileged training state and the limited local observations available on
+hardware. The global state $\mathbf{s}_t \in \mathcal{S}$ exposes quantities---exact
+per-vehicle accumulated waiting times, network-wide arrival counts---that no roadside
+camera can recover at inference time. We treat this discrepancy as a fundamental
+design constraint rather than a post-hoc adaptation, and delineate the privileged
+state from each local observation $\mathbf{o}_{i,t} \in \mathcal{O}_i$ through an
+explicit camera-computable projection $\phi_i$,
+\begin{equation}
+  \mathbf{o}_{i,t} = \phi_i(\mathbf{s}_t) + \varepsilon_{i,t},
+  \label{eq:projection}
+\end{equation}
+where $\phi_i$ retains only state components an overhead camera can estimate and
+$\varepsilon_{i,t}$ encapsulates the sensing noise of the vision pipeline. Training
+uses the noiseless projection ($\varepsilon_{i,t} = \mathbf{0}$); the perturbed regime
+is reserved for the robustness evaluation and physical deployment.
+
+This projection imposes a single design rule in two places. The execution policy
+factors entirely through it,
+\begin{equation}
+  a_{i,t} \sim \pi_\theta\!\left(\cdot \mid \mathbf{o}_{i,t}\right),
+  \label{eq:policy}
+\end{equation}
+so the actor consumes exactly the inputs available on-camera. The \emph{training
+objective} obeys the same restriction: every reward component admits a
+$\phi$-computable estimator, eliminating privileged simulator reads from the entire
+training loop. This requirement distinguishes the present formulation from prior
+vision-based RL-TSC methods, which restrict the observation yet still optimize against
+privileged lane-delays or throughput drawn from the
+simulator~\cite{dai2022_worldmodels, azfar2025_cosim}.
+
+\subsection{Observation Space}
+\label{sec:obs_space}
+The observation space $\mathcal{O}_i$ is a $26$-dimensional vector that aggregates
+traffic metrics at the \emph{approach} level. We adopt approach-level rather than
+lane-level features because lane abstractions break down under motorcycle-dominant
+traffic, where vehicles filter between and swarm across nominal lane boundaries; the
+approach grouping instead matches the macroscopic field of view of one camera Region
+of Interest (ROI). For each of the $4$ incoming approaches we extract $5$ features
+normalized to $[0, 1]$---effective halted-queue length, spatial occupancy, average
+vehicle speed, motorcycle share, and heavy-vehicle share---yielding $20$ dimensions.
+The remaining $6$ dimensions encode the controller state: a $4$-dimensional phase
+one-hot vector, a normalized green timer, and a scalar \emph{phase-imbalance}
+feature $\mathrm{pressure\_norm}$ that summarizes the local demand imbalance
+between the two phase groups at the same junction---an intra-junction
+quantity, not the upstream--downstream network pressure of classical
+max-pressure control~\cite{varaiya2013_maxpressure},
+\begin{equation}
+  \mathrm{pressure\_norm}
+  = \max\!\left(0,\; \min\!\left(1,\; \tfrac{1}{2}\left(1 + \bar{q}_A - \bar{q}_B\right)\right)\right),
+  \label{eq:pressure_norm}
+\end{equation}
+where
+\begin{equation}
+  \bar{q}_G = \frac{1}{|G|} \sum_{l \in G} q_l
+  \label{eq:group_queue}
+\end{equation}
+is the mean normalized queue over phase group $G \in \{A, B\}$. The group \emph{mean}
+renders the feature invariant to asymmetric approach counts, so that
+$\mathrm{pressure\_norm} = \tfrac{1}{2}$ denotes a balanced network and deviations
+identify the congested group. Each approach feature maps to a documented camera
+estimator---queue from near-stationary bounding boxes ($v\approx 0$), occupancy from the summed box footprint, speed from per-track displacement under ByteTrack~\cite{zhang2022_bytetrack}, and class shares
+from YOLOv11 detections~\cite{khanam2024_yolov11, ultralytics_yolo11}---against
+simulator counterparts read from SUMO's sublane model~\cite{lopez2018_sumo}, as
+summarized in Table~\ref{tab:obs_space}.
+\begin{table}[htbp]
+  \centering
+  \caption{26-Dimensional Local Proxy Observation Space ($\mathcal{O}_i$). Each
+  approach feature occupies index $5k{+}j$ for approach $k\in\{0,1,2,3\}$ and
+  feature $j$; the four approaches fill indices $0$--$19$.}
+  \label{tab:obs_space}
+  \resizebox{\columnwidth}{!}{%
+  \begin{tabular}{clllc}
+    \toprule
+    \textbf{Index} & \textbf{Feature} & \textbf{Simulator Source} & \textbf{Camera Estimator} & \textbf{Proxy?}\\
+    \midrule
+    $5k{+}0$ & \texttt{effective\_queue} & $\Sigma$ halted len./lane len. & Near-stationary box len. & Yes\\
+    $5k{+}1$ & \texttt{occupancy\_norm}  & Lane occupancy (1D)            & Summed box-length ratio  & Yes\\
+    $5k{+}2$ & \texttt{avg\_speed\_norm} & Mean tracked speed    & Track displacement    & Yes\\
+    $5k{+}3$ & \texttt{motorbike\_share} & Count by vType        & YOLO \emph{motorcycle}& Yes\\
+    $5k{+}4$ & \texttt{heavy\_veh\_share}& Count by vType        & YOLO \emph{truck, bus}& Yes\\
+    \midrule
+    20--23 & \texttt{phase\_one\_hot}  & Controller state      & Internal variable     & --\\
+    24     & \texttt{green\_timer}     & Controller state      & Internal variable     & --\\
+    25     & \texttt{pressure\_norm}   & Aggregated queues     & Aggregated proxy      & --\\
+    \bottomrule
+  \end{tabular}}
+\end{table}
+Figure~\ref{fig:vision_proxy} traces this construction end to end.
+\begin{figure}[!t]
+  \centering
+  \includegraphics[width=\columnwidth]{assets/figures/fig1.pdf}
+  \caption{Vision-proxy construction $\hat{\phi}$: each approach ROI is reduced by the
+  YOLOv11\,+\,ByteTrack estimator to five bounded features; the four approaches form
+  the $20$ approach dimensions, and the six controller dimensions (phase one-hot,
+  green-timer, and the \emph{derived} signed group-mean pressure that reuses only the
+  approach queue values) complete the $26$-dimensional observation.}
+  \label{fig:vision_proxy}
+\end{figure}
+
+\subsection{Action Space and Signal Constraints}
+\label{sec:action_space}
+The per-agent action space is binary, $\mathcal{A}_i = \{0,1\}$, selecting which of
+two non-conflicting phase groups---Group~A or Group~B, whose approach membership is
+fixed by the intersection phase plan rather than by observation-index order---receives
+the right-of-way. This abstraction matches the legacy fixed-time hardware prevalent in
+developing-city corridors and keeps the interface compatible with binary serial
+actuation. The agent decides only \emph{which} group is served, not \emph{when}
+transitions occur: the transition kernel $\mathcal{P}$ enforces the safety-critical
+timing as hard constraints---a mandatory $3$~s yellow clearance on every switch and a
+$15$~s minimum green that prevents high-frequency flickering. When a sampled action
+requests a switch before the $15$~s minimum green has elapsed, $\mathcal{P}$ overrides
+it by holding the current phase. Consistent with on-policy learning, the agent's
+\emph{sampled} action and its log-probability are what enter the rollout buffer---the
+PPO importance ratio is defined over the policy's own decision---while the override's
+\emph{consequence} (no phase change) is reflected in the realized phase dynamics, the
+next observation's phase one-hot (read from the controller state), and the
+switch-penalty term, which is keyed to the realized switch indicator rather than to the
+requested action. Credit assignment is therefore consistent: the policy learns that
+requesting a switch during the minimum-green lockout is inconsequential and incurs no
+spurious switch penalty. The $60$~s maximum green
+is \emph{not} a forced switch; it caps the accumulated green timer and sets the
+normalization scale of the \texttt{green\_timer\_norm} feature
+(Section~\ref{sec:obs_space}). Cross-movement starvation is therefore discouraged
+through the reward shaping (Section~IV) rather than hard-coded by $\mathcal{P}$,
+cleanly separating learned phase selection from operational safety independently of
+the policy parameters. 
+Figure~\ref{fig:signal_fsm} summarizes this two-phase logic and
+the environment-enforced timing.
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\columnwidth]{assets/figures/fig2.pdf}
+   \caption{Two-phase control and environment-enforced timing. At each $5$~s decision
+  the binary action selects which non-conflicting group is served. On a switch the
+  environment runs a $3$~s yellow clearance and then the new green for the remaining
+  $2$~s of the step; the green timer resets to ${\approx}2$~s and accumulates $+5$~s
+  per extend, capped at $60$~s. The $15$~s minimum green is a hard constraint, whereas
+  the $60$~s maximum only caps the \texttt{green\_timer\_norm} feature and is not a
+  forced switch.}
+  \label{fig:signal_fsm}
+\end{figure}
+\subsection{Sensing-Noise Model (Overview)}
+\label{sec:noise_model}
+The camera-computable premise of Sections~\ref{sec:projection}--\ref{sec:obs_space}
+is meaningful only if the residual estimation error of the vision pipeline is
+bounded and accounted for. Rather than assume that the YOLOv11\,+\,ByteTrack
+estimators recover the proxy features exactly ($\varepsilon_{i,t} = 0$), we model
+their residual error explicitly as the perturbation $\varepsilon_{i,t}$
+of~\eqref{eq:projection} through five domain-specific modes: multiplicative error
+on the effective queue (and the pressure derived from it), additive jitter on
+low-speed estimates, a confusion flip rate on the class shares, an additive
+occupancy bias, and two structural failures---a one-step pipeline delay and
+single-camera dropout. The base ($1\times$) magnitudes are fixed on a documented
+basis~\cite{zhang2022_bytetrack,khanam2024_yolov11}; tightening them with a
+measured feature-recovery study on labeled frames is left to the companion field
+deployment. The full parameterization, per-feature provenance, and the
+$\{0\times, 0.5\times, 1\times, 2\times\}$ degradation sweep that drives the
+robustness evaluation are presented in Section~\ref{sec:robustness_noise}
+(Table~\ref{tab:noise_params}), where they are used.
