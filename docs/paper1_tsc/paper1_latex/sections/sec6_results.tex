@@ -5,10 +5,18 @@
 \label{sec:res_quantitative}
 Analysis of throughput, average queue lengths, and waiting times against baseline heuristics goes here.
 
+\subsection{Information-Restriction Cost: Proxy vs.\ Privileged}
+\label{sec:restriction_cost}
+The performance gap between the camera-proxy policy and the privileged-observation upper bound (identical reward, $38$-dimensional state) goes here.
+
+\subsection{Generalization: OOD Demand and Composition Sweep}
+\label{sec:generalization}
+Out-of-distribution demand (low/medium/high/asymmetric) and the motorcycle-share sweep ($\{50, 73, 90\}\%$) go here.
+
 \subsection{Robustness Analysis under Sensing Noise}
-\label{sec:res_robustness}
-Evaluation of the proxy policy's degradation under calibrated camera noise compared to privileged baselines goes here.
+\label{sec:robustness_noise}
+Evaluation of the proxy policy's degradation under the calibrated camera-noise sweep ($\{0, 0.5, 1, 2\}\times$), including Table~\ref{tab:noise_params}, goes here.
 
 \subsection{Ablation Studies}
-\label{sec:res_ablation}
-Verification of the performance contributions of C1 state elements and C2 reward components goes here.
+\label{sec:ablations}
+Retrained reward-preset and observation ablations (C1 state elements, C2 reward components) go here.

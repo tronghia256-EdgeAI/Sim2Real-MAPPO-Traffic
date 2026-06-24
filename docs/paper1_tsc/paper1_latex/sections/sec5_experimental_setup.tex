@@ -18,8 +18,8 @@ Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities}; the remaining demand is allocated
 passenger cars ($17\%$), trucks ($7\%$), and buses ($3\%$) by vehicle class.
 Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities} also reports motorcycle shares of $80$--$89\%$ for Hai~Phong, Da~Nang, Ho~Chi~Minh~City, and
 Can~Tho, a range deliberately bracketed by the composition sweep of
-Section~\ref{sec:generalization}. We rigorously distinguish count share from
-at a motorcycle passenger-car-unit (PCU) equivalence of $\approx 0.29$~\cite{cao_sano_hanoi},
+Section~\ref{sec:generalization}. We distinguish count share from traffic \emph{load}: at a motorcycle
+passenger-car-unit (PCU) equivalence of $\approx 0.29$~\cite{cao_sano_hanoi},
 a $73\%$ motorcycle count corresponds to only about one-third of the total PCU-based load,
 with the exact fraction depending on the heavy-vehicle PCU values. Accordingly, count share
 is used when reasoning about lateral filtering, whereas PCU is used for capacity
@@ -45,7 +45,7 @@ evaluated on held-out demand. As reported in Table~\ref{tab:maxgreen_pilot}, the
 bound dominates a relaxed $90$~s bound across all primary metrics; in particular, the
 $90$~s bound severely degrades the $95$th-percentile (P95) waiting time
 ($\Delta = +24.7\%$), because excessively long green phases starve cross-phase
-conflict directly with the anti-starvation objective of the reward
+movements, conflicting directly with the anti-starvation objective of the reward
 (Section~\ref{sec:reward}). The bounds are therefore adopted as a structural
 choice applied uniformly to every learned and heuristic controller. We note that the
 maximum green time additionally sets the scale of the \texttt{green\_timer\_norm} feature
@@ -105,8 +105,8 @@ $\lambda_6=0.83$,
 and
 $\lambda_7=0.4$~veh/s,
 proportionally to the number of network entries. The profile thus advances from an off-peak
-lull, ramps to a sustained demand peak over $1500$--$3000$~s, eases to
-over $3600$--$4800$~s, and finally tapers back to off-peak, exercising the controllers
+lull, ramps to a sustained demand peak over $1500$--$3000$~s, eases to an
+intermediate plateau over $3600$--$4800$~s, and finally tapers back to off-peak, exercising the controllers
 across loading, saturation, and unloading regimes within a single episode.
 \begin{figure}[t]
     \centering
