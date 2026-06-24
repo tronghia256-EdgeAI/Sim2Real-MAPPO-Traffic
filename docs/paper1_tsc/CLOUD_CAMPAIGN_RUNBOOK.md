@@ -49,7 +49,8 @@ source ~/.bashrc
 
 ```bash
 cd ~/Sim2Real-MAPPO-Traffic
-git rev-parse HEAD                       # PHẢI = 3e235515e81ea0fbc09b0c80fc399f0b08980436
+git fetch && git status -sb              # PHẢI: "up to date with origin/master", working tree sạch
+# (code/config khóa từ 3e23551; các commit docs sau đó đẩy HEAD lên nhưng KHÔNG đổi training)
 python -c "import libsumo; print('libsumo OK')"
 echo "SUMO_HOME=$SUMO_HOME OMP=$OMP_NUM_THREADS nproc=$(nproc)"   # /usr/share/sumo, 1, 56
 df -h ~ | tail -1                        # còn ≥ vài chục GB
@@ -58,7 +59,13 @@ python scripts/run_pilot.py --network n3_grid --total-timesteps 2000   # in PILO
 ```
 ❌ Bất kỳ dòng nào fail → DỪNG, gửi log. ✅ Tất cả pass → sang Phase C.
 
-## PHASE C — Stage 1: Main campaign (30 job) trong tmux
+> **⚡ CHIẾN LƯỢC: chạy ĐỒNG THỜI cả 3 stage ngay Day 1** (không chờ Stage 1 xong).
+> 56 vCPU + OMP=1 ⇒ mỗi job ~1 nhân. Phân bổ **30 (Stage 1) + 17 (2a) + 9 (2b) = 56 worker**
+> trong 3 cửa sổ tmux ⇒ máy luôn 100% bận ⇒ **toàn bộ training ~2.5 ngày** (thay vì ~5
+> ngày kiểu tuần tự). Đây là cách giữ chi phí trong **$300** (xem mục Chi phí). Stage 2 là
+> các run training độc lập, KHÔNG phụ thuộc Stage 1 nên chạy song song được.
+
+## PHASE C — Stage 1: Main campaign (30 job) — cửa sổ tmux #1
 
 ```bash
 tmux new -s s1
@@ -70,8 +77,8 @@ python scripts/parallel_launcher.py \
   2>&1 | tee campaign_main.log
 ```
 - 30 job = 2 nets × {mappo-proxy, mappo-priv, ippo-proxy} × 5 seeds (ippo-priv tự skip).
-- 56 vCPU ⇒ cả 30 job chạy 1 wave ≈ **~54h (~2.3 ngày)**.
-- Thấy job khởi động → **`Ctrl-b` rồi `d`** để detach. Thoát SSH vẫn chạy.
+- `--max-workers 30` (chừa nhân cho 2a/2b chạy song song). 1 wave ≈ **~54h (~2.3 ngày)**.
+- Thấy job khởi động → **`Ctrl-b` rồi `d`** để detach → mở Phase E NGAY (không chờ).
 
 ## PHASE D — Monitor (mở SSH bất cứ lúc nào)
 
@@ -82,27 +89,29 @@ find results/paper1_mappo/main_05M -name bench.json | wc -l    # tiến độ ?/
 grep -ic error campaign_main.log                               # nên = 0
 ```
 
-## PHASE E — Stage 2: Ablations (chạy SAU khi Stage 1 xong)
+## PHASE E — Stage 2: Ablations (chạy ĐỒNG THỜI với Stage 1 — KHÔNG chờ)
 
-> ⚠️ `--reward-presets` × `--obs-ablations` là CROSS-PRODUCT ⇒ 2 lệnh RIÊNG.
-> Chạy đồng thời trong 2 cửa sổ tmux (18+9 = 27 worker ≤ 56, OMP=1 ⇒ thoải mái).
+> ⚠️ `--reward-presets` × `--obs-ablations` là CROSS-PRODUCT ⇒ 2 lệnh RIÊNG, 2 cửa sổ tmux.
+> Worker: 2a=17 + 2b=9 = 26, cộng Stage 1=30 ⇒ **tổng 56 = đúng số nhân** (OMP=1, không oversubscribe).
+> Mở 2 cửa sổ này NGAY sau khi launch Phase C (đừng đợi Stage 1 xong).
 
 ```bash
-# cửa sổ 1:  tmux new -s s2a
+# cửa sổ #2:  tmux new -s s2a   (reward ablations, 18 job)
 python scripts/parallel_launcher.py --networks n3_grid --algos mappo --obs-modes proxy \
   --reward-presets no_pressure no_throughput queue_only unsigned_pressure mean_then_square no_delay \
   --seeds 42 123 456 --total-timesteps 500000 \
-  --max-workers 18 --stagger 45 --campaign-id ablation_reward_05M 2>&1 | tee camp_2a.log
+  --max-workers 17 --stagger 45 --campaign-id ablation_reward_05M 2>&1 | tee camp_2a.log
 
-# cửa sổ 2:  tmux new -s s2b
+# cửa sổ #3:  tmux new -s s2b   (obs ablations, 9 job)
 python scripts/parallel_launcher.py --networks n3_grid --algos mappo --obs-modes proxy \
   --obs-ablations no_class_shares no_pressure_feature lane_truncated \
   --seeds 42 123 456 --total-timesteps 500000 \
   --max-workers 9 --stagger 45 --campaign-id ablation_obs_05M 2>&1 | tee camp_2b.log
 ```
-≈ **~54h (~2.3 ngày)**, cả 2 cùng lúc. (Tùy chọn thêm `no_low_speed` vào 2a ⇒ 21 job.)
+Cả 3 stage chạy cùng lúc ⇒ **toàn bộ ~2.5 ngày**. (Tùy chọn thêm `no_low_speed` vào 2a ⇒ 21 job;
+lúc đó để Stage 1 xong rồi mới chạy phần dư để khỏi quá 56 nhân.)
 
-## PHASE F — Stage 3: Sublane cross-eval (rẻ, chạy chen lúc Stage 1 còn nhân rảnh)
+## PHASE F — Stage 3: Sublane cross-eval (chạy khi job 3 stage trên bắt đầu nhả nhân)
 
 ```bash
 python experiment/runners/train_ppo.py --mode train --algo mappo --obs-mode proxy \
@@ -141,16 +150,35 @@ scp -r ubuntu@<IP>:~/Sim2Real-MAPPO-Traffic/figures ./figures_cloud
 
 ---
 
-## Timeline kỳ vọng (56 vCPU, deadline 30/6)
+## Timeline kỳ vọng (56 vCPU, ĐỒNG THỜI, deadline 30/6)
 
 | | Việc | Wall-clock | Xong ~ |
 |---|---|---|---|
 | Phase A+B | setup + verify | ~30 phút | ngày 0 |
-| Phase C | Stage 1 (30 job, 1 wave) | ~2.3 ngày | ngày 2–3 |
-| Phase E | Stage 2 (2a+2b concurrent) | ~2.3 ngày | ngày 5 |
-| Phase G | eval + tables + figures | ~0.5 ngày | ngày 5–6 |
+| Phase C+E (+F) | **toàn bộ training 59 job, đồng thời 30+17+9 worker** | **~2.5 ngày** | ngày 2–3 |
+| Phase G | eval + tables + figures (gồm noise sweep ~4–5h) | ~0.5–1 ngày | ngày 3–4 |
+| Phase H | pull results + **DELETE VM** | ~15 phút | ngày 3–4 |
 
-→ Xong ~**ngày 5–6**, dư buffer trước **30/6**. (Phase F chen vào lúc rảnh nhân.)
+→ Xong ~**ngày 3.5–4 → XÓA VM**. Phần viết bài (D4→D13) làm **local, miễn phí**.
+
+---
+
+## 💰 Chi phí & giữ trong $300 free credit
+
+Giá c2d-standard-56 on-demand ~**$3.0/h (region US)** / ~**$3.7/h (Singapore)** — *ước tính, xác
+nhận lại số $/h GCP hiển thị khi tạo máy*. **Tiền = $/h × số giờ VM SỐNG** (không phải giờ tính toán).
+
+| Kịch bản | Giờ VM sống | US ~$3.0 | Singapore ~$3.7 |
+|---|---|---|---|
+| **Đồng thời + xóa ngay (runbook này)** | ~84h | **~$252 ✅** | ~$311 ⚠️ |
+| Tuần tự | ~120h | ~$360 ❌ | ~$444 ❌ |
+| Quên tắt, để chạy cả tuần viết bài | 168h+ | $500+ ❌ | $620+ ❌ |
+
+**4 quy tắc giữ trong $300:**
+1. **VM chỉ sống trong cửa sổ compute (~3.5 ngày)** — viết paper làm local. Mỗi ngày quên tắt ≈ **−$72**.
+2. **Chạy đồng thời** cả 3 stage (Phase C+E) — đã set sẵn trong runbook này.
+3. **Region `us-central1`** (rẻ hơn Singapore ~23%; batch chạy nền, SSH chậm vài chục ms không sao).
+4. **Budget Alert $250** (Billing → Budgets) + **DELETE** (không phải Stop) VM ngay khi pull xong results.
 
 ---
 
@@ -168,14 +196,15 @@ scp -r ubuntu@<IP>:~/Sim2Real-MAPPO-Traffic/figures ./figures_cloud
 
 ## Định nghĩa "DONE" mỗi stage (tick khi đạt)
 
-- [ ] B: `git rev-parse HEAD`=3e23551, `check_obs_match --sumo` PASS, pilot in PILOT SUMMARY
+- [ ] B: `git status` up-to-date với origin/master + sạch, `check_obs_match --sumo` PASS, pilot in PILOT SUMMARY
 - [ ] C: `find results/paper1_mappo/main_05M -name bench.json | wc -l` = **30**
 - [ ] E: ablation_reward_05M = **18** bench.json, ablation_obs_05M = **9**
 - [ ] F: sublane_lanebased có best_model.pt + cross-eval table
 - [ ] G: `figures/tables/*.tex` sinh ra; FIG-3/4/5/6 có; Abstract X/Y/Z/W% điền được
 - [ ] H: results/figures đã tải về local; **VM đã DELETE**; Budget alert đã đặt
 
-## ⚠️ 3 quy tắc vàng
+## ⚠️ 4 quy tắc vàng
 1. Mọi launcher chạy **trong tmux** (rớt SSH không mất job).
 2. **Verify Phase B PASS** trước khi launch (kẻo đốt compute mới phát hiện SUMO lỗi).
-3. **DELETE VM** sau khi tải kết quả (đặt Budget Alert phòng quên).
+3. **Chạy đồng thời** cả 3 stage (30+17+9 worker) — giữ máy 100% bận, ~2.5 ngày, vừa $300.
+4. **DELETE VM** ngay khi pull xong results (đừng để sống qua giai đoạn viết bài); Budget Alert $250.
