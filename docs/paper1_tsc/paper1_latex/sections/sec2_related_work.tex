@@ -26,7 +26,14 @@ trajectory~\cite{wei2019_survey,rltsc_review2025,rltsc_survey2026}. Despite thei
 architectural diversity, these methods share a premise that undermines
 deployment: each consumes privileged simulator state---exact halting counts,
 per-vehicle accumulated waiting times, and holistic network observations---that
-no commodity roadside sensor can produce.
+no commodity roadside sensor can produce. This privilege dependence also makes a
+direct empirical comparison ill-posed: re-implementing PressLight, MPLight, or
+CoLight on camera-computable proxies would no longer faithfully represent them.
+We therefore adopt IPPO~\cite{dewitt2020_ippo}---the strongest learned CTDE
+baseline that runs on the \emph{identical} proxy observation and reward---as our
+learned reference, and separately bound the advantage that any privileged-input
+method could enjoy through a privileged-observation variant of our own policy
+(the information-restriction cost of Section~VI-C).
 
 \subsection{Deployability- and Sensing-Constrained TSC}
 A growing body of work confronts this sensing gap along three threads.

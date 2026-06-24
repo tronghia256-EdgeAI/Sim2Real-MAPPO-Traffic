@@ -197,9 +197,10 @@ on the effective queue (and the pressure derived from it), additive jitter on
 low-speed estimates, a confusion flip rate on the class shares, an additive
 occupancy bias, and two structural failures---a one-step pipeline delay and
 single-camera dropout. The base ($1\times$) magnitudes are fixed on a documented
-basis~\cite{zhang2022_bytetrack,khanam2024_yolov11}; tightening them with a
-measured feature-recovery study on labeled frames is left to the companion field
-deployment. The full parameterization, per-feature provenance, and the
+basis~\cite{zhang2022_bytetrack,khanam2024_yolov11}, with one exception: the
+class-confusion flip rate is measured directly from the detector's confusion
+matrix on the held-out validation set. A fuller per-feature recovery study on
+labeled trajectory frames is left to the companion field deployment. The full parameterization, per-feature provenance, and the
 $\{0\times, 0.5\times, 1\times, 2\times\}$ degradation sweep that drives the
 robustness evaluation are presented in Section~\ref{sec:robustness_noise}
 (Table~\ref{tab:noise_params}), where they are used.
