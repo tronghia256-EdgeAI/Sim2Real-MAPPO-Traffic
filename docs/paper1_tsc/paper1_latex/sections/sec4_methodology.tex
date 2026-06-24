@@ -52,7 +52,7 @@ reward is therefore best understood as dense, multi-scale gradient shaping aroun
 queue-minimization core, in which the local ROI-exit throughput reward and the phase-switch
 penalty are the two genuinely distinct regularizers. The marginal value of each shaping term
 \emph{beyond} the $L_2$ queue core---rather than an assumption of independence---is what the
-ablations of Section~VI-F quantify.
+ablations of Section~\ref{sec:ablations} quantify.
 
 \paragraph{Anti-starvation queue penalty}
 Rather than minimizing the linear mean queue length across the $n_i$ controlled lanes,
@@ -104,7 +104,7 @@ therefore contains all information that its pressure reward optimizes.
 The agent is rewarded for vehicles actively clearing the intersection. The throughput term
 is defined as
 \begin{equation}
-T_i(t) = \mathrm{clip}\!\left(\frac{\bigl|\, \text{prev\_ids}(L_i) \setminus \text{cur\_ids}(L_i)\, \bigr|}{\kappa},\; 0,\; 1\right),
+T_i(t) = \mathrm{clip}\!\left(\frac{1}{\kappa}\sum_{l \in L_i}\bigl|\, \text{prev\_ids}(l) \setminus \text{cur\_ids}(l)\, \bigr|,\; 0,\; 1\right),
 \label{eq:throughput}
 \end{equation}
 with normalizing capacity $\kappa = 20$ and $L_i$ the set of lanes controlled by agent $i$.
@@ -127,7 +127,7 @@ same $\phi$-computable signal as the queue feature, but averaged linearly rather
 squared. It supplies a dense low-queue gradient that complements the quadratic
 anti-starvation term while remaining fully camera-computable, as no per-vehicle waiting
 timer is read at any point. Its marginal contribution beyond the quadratic queue term is
-isolated by the delay-term ablation reported in Section~VI-F.
+isolated by the delay-term ablation reported in Section~\ref{sec:ablations}.
 
 \subsection{MAPPO Architecture and Optimization}
 \begin{figure*}[!t]
@@ -138,8 +138,8 @@ framework. Solid paths denote the on-camera deployment data flow (no simulator):
 regions of interest are processed by YOLOv11 and ByteTrack, smoothed by a per-dimension
 VisionBuffer (EMA, $\alpha=0.6$), normalized by the serialized Welford statistics, and
 mapped to discrete phase actions by the parameter-shared actor $\pi_\theta$. Dashed paths
-denote training-only
-per-agent GAE estimator, neither of which is deployed.}
+denote the training-only centralized multi-head critic and the per-agent GAE
+estimator, neither of which is deployed.}
 \label{fig:architecture}
 \end{figure*}
 
@@ -245,7 +245,7 @@ V^{\text{clip}}_{\psi}
 \label{eq:valueloss}
 \end{equation}
 with early stopping triggered whenever the approximate KL divergence between successive
-policies exceeds $0.015$. The complete training loop is summarized in Algorithm~\ref{alg:mappo}.
+policies exceeds $1.5\times$ the target KL of $0.015$ (i.e., $0.0225$). The complete training loop is summarized in Algorithm~\ref{alg:mappo}.
 
 To bridge the residual normalization gap between training and deployment, the observation
 running mean and variance are tracked online by Welford's algorithm~\cite{welford1962} and
@@ -277,7 +277,7 @@ during training, without any dependence on live estimation.
         \STATE Compute clipped surrogate loss $L^{\text{clip}}(\theta)$ across all agents
         \STATE Compute multi-head value loss $L^{\text{VF}}(\psi)$
         \STATE Update $\theta, \psi$ with the Adam optimizer
-        \IF{approximate KL divergence $> 0.015$}
+        \IF{approximate KL divergence $> 1.5 \times 0.015$}
             \STATE Break (early stop)
         \ENDIF
     \ENDFOR

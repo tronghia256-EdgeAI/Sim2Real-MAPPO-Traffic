@@ -33,7 +33,7 @@ We therefore adopt IPPO~\cite{dewitt2020_ippo}---the strongest learned CTDE
 baseline that runs on the \emph{identical} proxy observation and reward---as our
 learned reference, and separately bound the advantage that any privileged-input
 method could enjoy through a privileged-observation variant of our own policy
-(the information-restriction cost of Section~VI-C).
+(the information-restriction cost of Section~\ref{sec:restriction_cost}).
 
 \subsection{Deployability- and Sensing-Constrained TSC}
 A growing body of work confronts this sensing gap along three threads.
@@ -59,7 +59,7 @@ proxies, and we quantify the resulting information-restriction cost together
 with the policy's degradation under a sensing-noise model whose per-feature
 magnitudes are fixed on a documented basis from the detection-and-tracking
 literature, with conclusions resting on the shape of the degradation across a
-$0$--$2\times$ magnitude sweep (Sections~III-E and~VI-E).
+$0$--$2\times$ magnitude sweep (Sections~III-E and~\ref{sec:robustness_noise}).
 
 \subsection{Mixed and Motorcycle-Dominant Traffic Modeling}
 Traffic in developing metropolises is fundamentally heterogeneous and
@@ -70,13 +70,13 @@ continuous-space microsimulation, such as the sublane model of
 SUMO~\cite{lopez2018_sumo}, rather than single-file lane queues. Field studies of
 Vietnamese cities document the magnitude of this dominance: Ngoc \emph{et al.}~\cite{ngoc2021_fivecities}
 report a motorcycle mode share of $72.6\%$ in Hanoi,
-rising to $80$--$89\%$ in Hai Phong, Da Nang, Ho Chi Minh City, and Can Tho,
+rising to $\approx 80$--$89\%$ in Hai Phong, Da Nang, Ho Chi Minh City, and Can Tho,
 while microscopic trajectory analyses confirm pervasive lateral filtering under
 such mixes~\cite{vn_roundabout}. These shares lie an order of magnitude above
 the car-centric compositions assumed in most RL-TSC studies; we therefore adopt
 the Hanoi figure as a representative anchor ($\approx 73\%$ motorcycles by
 vehicle count) and bracket the field range with a composition sweep
-(Section~VI-D). We further distinguish count share from traffic load: at a
+(Section~\ref{sec:generalization}). We further distinguish count share from traffic load: at a
 motorcycle passenger-car-unit (PCU) equivalence of $\approx 0.29$
 \cite{cao_sano_hanoi}, the $73\%$ count share corresponds to roughly one-third
 of the PCU-based load, so we report count share when analyzing lateral filtering

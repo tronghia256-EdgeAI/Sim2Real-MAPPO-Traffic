@@ -14,7 +14,7 @@ video~\cite{dai2022_worldmodels,azfar2025_cosim,su2025_visionllm}; however, thes
 \subsection{Challenges}
 Engineering an RL-TSC controller that factors entirely through commodity sensing raises three coupled technical challenges.
 \emph{(i) Spatial granularity.} A camera region of interest (ROI) measures traffic as an approach-level aggregate and cannot supply the per-lane occupancy indices that classical state formulations presuppose, particularly where lane discipline is weak.
-\emph{(ii) Reward unmeasurability.} The most effective RL reward signals system-wide delay and exact per-vehicle waiting time---are not computable at the edge, so a reward optimized in simulation generally cannot be reproduced at deployment without a privileged read.
+\emph{(ii) Reward unmeasurability.} The most effective RL reward signals---system-wide delay and exact per-vehicle waiting time---are not computable at the edge, so a reward optimized in simulation generally cannot be reproduced at deployment without a privileged read.
 \emph{(iii) Heterogeneous traffic dynamics.} In developing metropolises, traffic is heavily motorcycle-dominant and non-lane-based: motorcycles filter and swarm between lanes~\cite{ngoc2021_fivecities,vn_roundabout}, a behavior that 
 breaks car-centric, lane-indexed state and reward designs and that demands continuous-space (sublane) microsimulation rather than discrete lane queues.
 
@@ -32,7 +32,7 @@ We propose a deployability-constrained multi-agent proximal policy optimization 
   \item \textbf{C4 (Mixed-traffic, multi-junction evaluation).} We report multi-seed evaluations on a $5$-junction corridor and a $16$-junction grid under SUMO's sublane model~\cite{lopez2018_sumo} with a motorcycle-dominant
   ($\approx 73\%$) fleet calibrated to Hanoi field data~\cite{ngoc2021_fivecities,cao_sano_hanoi} and time-varying demand, outperforming Webster~\cite{webster1958}, SUMO-actuated, max-pressure control~\cite{varaiya2013_maxpressure}, and independent PPO~\cite{dewitt2020_ippo}. A sublane-versus-lane cross-evaluation furthermore shows that ignoring mixed-traffic dynamics materially alters policy outcomes.
 \end{itemize}
-We emphasize that the MAPPO algorithm itself is standard and is not claim as a methodological contribution; it is the vehicle for evaluating the proposed camera-constrained state and reward formulation.
+We emphasize that the MAPPO algorithm itself is standard and is not claimed as a methodological contribution; it is the vehicle for evaluating the proposed camera-constrained state and reward formulation.
 
 \subsection{Paper Organization}
 The remainder of this paper is organized as follows. Section~II reviews related work and positions our contribution. Section~III formalizes the Dec-POMDP, the camera-computable observation projection, and the feature-estimator validation. Section~IV details the queue-centric vision-proxy reward, the MAPPO architecture, and the sensing-noise model. Section~V describes the experimental setup, networks, demand, baselines, and statistical protocol. Section~VI presents the main comparison, the information-restriction cost, generalization, noise robustness, and ablations. Section~VII discusses limitations, and Section~VIII concludes.

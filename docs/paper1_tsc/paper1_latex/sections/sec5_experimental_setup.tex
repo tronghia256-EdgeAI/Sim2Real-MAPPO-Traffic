@@ -3,7 +3,7 @@
 
 \subsection{Simulation Environment and Mixed-Traffic Calibration}
 \label{sec:sim_env}
-All experiments are conducted in SUMO~v1.20.0~\cite{lopez2018_sumo}, configured with
+All experiments are conducted in SUMO~v1.12.0~\cite{lopez2018_sumo}, configured with
 the sub-lane model at a lateral resolution of $0.4$~m. This choice is deliberate
 rather than cosmetic: in motorcycle-dominant traffic the conventional one-vehicle-per-lane
 abstraction is invalid, as powered two-wheelers continuously filter laterally and form
@@ -16,7 +16,7 @@ The vehicle composition is a central calibration target. The motorcycle count sh
 to $73\%$, anchored to the $72.6\%$ motorcycle mode share reported for
 Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities}; the remaining demand is allocated to
 passenger cars ($17\%$), trucks ($7\%$), and buses ($3\%$) by vehicle class.
-Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities} also reports motorcycle shares of $80$--$89\%$ for Hai~Phong, Da~Nang, Ho~Chi~Minh~City, and
+Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities} also reports motorcycle shares of $\approx 80$--$89\%$ for Hai~Phong, Da~Nang, Ho~Chi~Minh~City, and
 Can~Tho, a range deliberately bracketed by the composition sweep of
 Section~\ref{sec:generalization}. We distinguish count share from traffic \emph{load}: at a motorcycle
 passenger-car-unit (PCU) equivalence of $\approx 0.29$~\cite{cao_sano_hanoi},
@@ -24,13 +24,15 @@ a $73\%$ motorcycle count corresponds to only about one-third of the total PCU-b
 with the exact fraction depending on the heavy-vehicle PCU values. Accordingly, count share
 is used when reasoning about lateral filtering, whereas PCU is used for capacity
 arguments. To reproduce realistic motorcycle swarming, the sub-lane parameters are set to
-\texttt{latAlignment=arbitrary} with a minimum lateral gap \texttt{minGap},
+\texttt{latAlignment=arbitrary} with a minimum lateral gap \texttt{minGapLat},
 which allows roughly three to four motorcycles to share a standard $3.2$~m urban lane
 alongside a passenger car.
 
-Under this calibration, the simulated saturation flow reaches approximately
-$2100$~PCU/h per lane, in agreement with capacity measurements for mixed-flow urban roads
-in Hanoi~\cite{cao_sano_hanoi}. As regional compositions vary, the $73\%$ value is treated
+Under this calibration, a queue-discharge experiment yields a raw per-lane discharge of
+approximately $2450$~veh/h---well above a conventional car-lane saturation flow because
+motorcycles filter and discharge several abreast within a single lane. At the calibrated
+$73\%$ motorcycle share this corresponds to roughly $1500$~PCU/h per lane, characteristic of
+the mixed-flow regime documented for Hanoi~\cite{cao_sano_hanoi}. As regional compositions vary, the $73\%$ value is treated
 as a representative anchor rather than a universal constant, and the policy's robustness to
 compositional shift is defended explicitly through the systematic motorcycle sweep
 ($\{50\%, 73\%, 90\%\}$) of Section~\ref{sec:generalization}.
@@ -44,7 +46,7 @@ design-selection pilot on the $16$-junction N3 grid (seed~$42$, $100$k training 
 evaluated on held-out demand. As reported in Table~\ref{tab:maxgreen_pilot}, the $60$~s
 bound dominates a relaxed $90$~s bound across all primary metrics; in particular, the
 $90$~s bound severely degrades the $95$th-percentile (P95) waiting time
-($\Delta = +24.7\%$), because excessively long green phases starve cross-phase
+(the selected $60$~s bound is $24.7\%$ lower), because excessively long green phases starve cross-phase
 movements, conflicting directly with the anti-starvation objective of the reward
 (Section~\ref{sec:reward}). The bounds are therefore adopted as a structural
 choice applied uniformly to every learned and heuristic controller. We note that the

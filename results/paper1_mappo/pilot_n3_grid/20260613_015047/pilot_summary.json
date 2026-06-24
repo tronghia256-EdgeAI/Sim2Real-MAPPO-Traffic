@@ -1,0 +1,37 @@
+{
+  "pilot": {
+    "network": "n3_grid",
+    "algo": "mappo",
+    "seed": 42,
+    "total_timesteps": 100000,
+    "min_green_time": 15,
+    "max_green_time": 60,
+    "schema_version": "1.2.0",
+    "num_agents": 16
+  },
+  "bench": {
+    "run_id": "20260613_015047",
+    "algo": "mappo",
+    "num_agents": 16,
+    "global_steps": 100000,
+    "episodes": 92,
+    "elapsed_seconds": 43710.8,
+    "mean_steps_per_second": 2.29,
+    "projected_hours_2M_steps": 242.84,
+    "projected_hours_2M_x5_seeds": 1214.19,
+    "device": "cpu",
+    "ckpt_dir": "models\\mappo\\20260613_015047",
+    "log_dir": "logs\\rl\\20260613_015047"
+  },
+  "eval_heldout": {
+    "n_trips": 14888,
+    "mean_travel_time_s": 311.12466415905425,
+    "mean_waiting_time_s": 135.83207952713596,
+    "mean_time_loss_s": 230.8147313272434,
+    "p95_waiting_time_s": 504.0,
+    "eval_steps": 1080,
+    "mean_step_reward": 0.40225770057905663,
+    "checkpoint": "best_model.pt"
+  },
+  "run_dir": "C:\\Users\\ASUS\\Desktop\\Traffic-Guard-AI-main\\models\\mappo\\20260613_015047"
+}
