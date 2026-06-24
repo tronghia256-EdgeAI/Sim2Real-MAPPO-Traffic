@@ -82,6 +82,7 @@ class Job:
     finished_at: Optional[str] = None
     runtime_s: Optional[float] = None
     exit_code: Optional[int] = None
+    attempts: int = 0            # spawn count (incremented in _spawn; drives retry)
     proc: Optional[subprocess.Popen] = field(default=None, repr=False, compare=False)
     log_handle: object = field(default=None, repr=False, compare=False)
 
@@ -100,6 +101,7 @@ class Job:
             "finished_at": self.finished_at,
             "runtime_s": self.runtime_s,
             "exit_code": self.exit_code,
+            "attempts": self.attempts,
             "cmd": " ".join(self.cmd),
             "log_path": str(self.log_path),
             "ckpt_dir": str(self.ckpt_dir),
@@ -166,12 +168,14 @@ def build_jobs(args: argparse.Namespace, campaign_dir: Path, passthrough: List[s
 
 class CampaignScheduler:
     def __init__(self, jobs: List[Job], campaign_dir: Path,
-                 max_workers: int, stagger_s: float, poll_s: float = 5.0) -> None:
+                 max_workers: int, stagger_s: float, poll_s: float = 5.0,
+                 max_retries: int = 3) -> None:
         self.jobs = jobs
         self.campaign_dir = campaign_dir
         self.max_workers = max(1, int(max_workers))
         self.stagger_s = max(0.0, float(stagger_s))
         self.poll_s = poll_s
+        self.max_retries = max(0, int(max_retries))
         self._last_spawn_t = 0.0
         self._interrupted = False
 
@@ -199,6 +203,7 @@ class CampaignScheduler:
         return any(job.ckpt_dir.glob("*/bench.json")) if job.ckpt_dir.exists() else False
 
     def _spawn(self, job: Job) -> None:
+        job.attempts += 1
         job.log_handle = open(job.log_path, "a", encoding="utf-8", errors="replace")
         job.log_handle.write(
             f"\n===== launch {datetime.now().isoformat(timespec='seconds')} =====\n"
@@ -222,14 +227,24 @@ class CampaignScheduler:
         if job.started_at:
             t0 = datetime.fromisoformat(job.started_at)
             job.runtime_s = round((datetime.fromisoformat(job.finished_at) - t0).total_seconds(), 1)
-        job.status = "done" if job.exit_code == 0 else "failed"
         if job.log_handle:
             try:
                 job.log_handle.close()
             except Exception:
                 pass
-        marker = "OK" if job.status == "done" else f"FAILED exit={job.exit_code}"
-        print(f"[finish] {job.name}: {marker} ({job.runtime_s}s)")
+        if job.exit_code == 0:
+            job.status = "done"
+            print(f"[finish] {job.name}: OK ({job.runtime_s}s)")
+        elif job.attempts <= self.max_retries:
+            # crash/segfault (e.g. intermittent libsumo SIGSEGV exit=-11): re-queue
+            # so the freed core restarts the run instead of utilization decaying.
+            job.status = "queued"
+            print(f"[retry]  {job.name}: exit={job.exit_code} "
+                  f"(attempt {job.attempts}/{self.max_retries + 1}) -> requeued")
+        else:
+            job.status = "failed"
+            print(f"[finish] {job.name}: FAILED exit={job.exit_code} "
+                  f"after {job.attempts} attempts")
 
     def _terminate_all(self) -> None:
         for job in self.jobs:
@@ -352,6 +367,9 @@ def main() -> int:
                              "SUMO-init CPU spikes)")
     parser.add_argument("--campaign-id", type=str, default=None,
                         help="reuse an existing campaign dir to resume it")
+    parser.add_argument("--max-retries", type=int, default=3,
+                        help="re-queue a crashed job (e.g. intermittent libsumo "
+                             "SIGSEGV exit=-11) up to N times before marking failed")
     args = parser.parse_args(argv)
 
     campaign_id = args.campaign_id or datetime.now().strftime("campaign_%Y%m%d_%H%M%S")
@@ -368,7 +386,8 @@ def main() -> int:
     print(f"artifacts -> {campaign_dir}")
 
     scheduler = CampaignScheduler(
-        jobs, campaign_dir, max_workers=args.max_workers, stagger_s=args.stagger
+        jobs, campaign_dir, max_workers=args.max_workers, stagger_s=args.stagger,
+        max_retries=args.max_retries,
     )
     return scheduler.run()
 
