@@ -71,6 +71,11 @@ echo ""
 
 # ── 4. best_model.pt tồn tại? ────────────────────────────────
 echo -e "${BLD}── 4. CHECKPOINT FILES ──────────────────────────────────${NC}"
+# Count ALL best_model.pt (mid-run jobs save best_model.pt before bench.json)
+ALL_PT=$(find "$RESULTS" -name best_model.pt 2>/dev/null | wc -l)
+echo "    best_model.pt hiện có: $ALL_PT"
+
+# When campaign is done: every bench.json dir must have best_model.pt
 MISSING_PT=0
 FOUND_PT=0
 while IFS= read -r bench; do
@@ -85,10 +90,13 @@ while IFS= read -r bench; do
     fi
 done < <(find "$RESULTS" -name bench.json 2>/dev/null)
 
-if [ "$MISSING_PT" -eq 0 ] && [ "$FOUND_PT" -gt 0 ]; then
+if [ "$TOTAL_BENCH" -eq 0 ] && [ "$RUNNING" -gt 0 ]; then
+    # Campaign mid-run: bench.json not yet written — not an error
+    ok "Training in progress ($ALL_PT best_model.pt saved so far, bench.json pending)."
+elif [ "$MISSING_PT" -eq 0 ] && [ "$FOUND_PT" -gt 0 ]; then
     ok "$FOUND_PT best_model.pt tìm thấy — tất cả completed jobs có checkpoint."
-elif [ "$FOUND_PT" -eq 0 ]; then
-    warn "Chưa có best_model.pt nào — campaign chưa xong?"
+elif [ "$FOUND_PT" -eq 0 ] && [ "$ALL_PT" -eq 0 ]; then
+    fail "Không có best_model.pt nào — campaign chưa bắt đầu hoặc bị lỗi?"
     ISSUES=$((ISSUES + 1))
 else
     fail "$MISSING_PT jobs thiếu best_model.pt dù có bench.json!"
