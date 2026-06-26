@@ -558,7 +558,7 @@ def make_env(args: argparse.Namespace) -> Tuple[MappoTrafficEnv, Any]:
     env = MappoTrafficEnv(
         config=env_cfg,
         gui=args.gui,
-        use_libsumo=not args.gui,
+        use_libsumo=(not args.gui) and (not args.no_libsumo),
         no_step_log=True,
         waiting_time_memory=1000,
         print_warnings=False,
@@ -1341,6 +1341,8 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--device", type=str, default="cuda" if torch.cuda.is_available() else "cpu")
 
     parser.add_argument("--gui", action="store_true")
+    parser.add_argument("--no-libsumo", action="store_true",
+                        help="Force traci subprocess mode (slower but crash-safe on large networks)")
     parser.add_argument("--step-length", type=int, default=5)
     parser.add_argument("--yellow-time", type=int, default=3)
     parser.add_argument("--max-steps", type=int, default=1080)
