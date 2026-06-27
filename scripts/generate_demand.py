@@ -17,6 +17,12 @@ networks the profile is scaled by  n_entries / 6  by default (--scale auto)
 so the per-approach load — what each agent actually faces — stays comparable
 across N1/N2/N3.
 
+Exception: n_entries/6 is topology-blind. A corridor funnels all entry flow
+onto one shared series-arterial, so per-entry parity over-saturates it into
+gridlock (n2_corridor: 12 entries but only 8 internal edges in series, vs
+n3_grid's 48 parallel ones). NETWORK_SCALE_OVERRIDES caps such networks to a
+sustainable scale (pilot-tuned). An explicit --scale <float> overrides both.
+
 Train/eval consistency (fixes the historical drift): every vehicle gets
     type="mixed_traffic" departLane="random" departPos="random" departSpeed="random"
 in BOTH training and evaluation files; only the RNG seed differs
@@ -48,6 +54,19 @@ NETWORKS_DIR = ROOT / "sumo_configs" / "networks"
 
 EPISODE_SECONDS = 5400          # 1080 env steps x 5 s
 N1_REFERENCE_ENTRIES = 6        # rate spec is defined for N1's 6 entry edges
+
+# Per-network demand-scale overrides, applied ONLY when --scale auto.
+# n_entries/6 keeps per-entry injection equal across nets but is topology-blind:
+# a corridor funnels every entry's flow onto one shared series-arterial, so
+# per-entry parity gridlocks it (n2_corridor measured: 12 entries / 8 internal
+# series edges -> auto scale 2.0 -> peak 3.34 veh/s -> ~1900s waiting, policy
+# cannot learn). n3_grid spreads flow over 48 parallel internal edges and is
+# fine at auto. Cap the corridor to a sustainable load (peak ~0.84 veh/s),
+# matching n3's per-internal-edge load. Pilot-tuned: lower toward 0.35 if any
+# residual gridlock, raise toward 0.7 if under-congested.
+NETWORK_SCALE_OVERRIDES: Dict[str, float] = {
+    "n2_corridor": 0.5,
+}
 
 TRIP_ATTRS = {
     "type": "mixed_traffic",
@@ -213,12 +232,21 @@ def generate_for_network(
         raise FileNotFoundError(f"{net_path} — run scripts/generate_networks.py first")
 
     entries, exits = find_entries_exits(net_path)
-    scale = len(entries) / N1_REFERENCE_ENTRIES if scale_arg == "auto" else float(scale_arg)
+    if scale_arg == "auto":
+        auto_scale = len(entries) / N1_REFERENCE_ENTRIES
+        scale = NETWORK_SCALE_OVERRIDES.get(name, auto_scale)
+        overridden = name in NETWORK_SCALE_OVERRIDES
+    else:
+        auto_scale = len(entries) / N1_REFERENCE_ENTRIES
+        scale = float(scale_arg)
+        overridden = False
 
     low, medium, peak = rates
     knots = trapezoid_profile(low=low, peak=peak, medium=medium)
 
-    print(f"\n=== {name} ===")
+    note = (f" [capacity override; auto n_entries/6 would be {auto_scale:.2f}]"
+            if overridden else "")
+    print(f"\n=== {name} ==={note}")
     print(f"  entries={len(entries)} exits={len(exits)} scale={scale:.2f} "
           f"(network rates: low={low*scale:.2f} med={medium*scale:.2f} peak={peak*scale:.2f} veh/s)")
 
