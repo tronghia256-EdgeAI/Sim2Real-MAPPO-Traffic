@@ -14,9 +14,15 @@ import uuid
 from typing import Any, List, Optional, Sequence
 
 
-def _ensure_sumo_api(gui: bool) -> Any:
-    """import a sumo python api with a safe fallback order."""
-    if not gui:
+def _ensure_sumo_api(prefer_traci: bool) -> Any:
+    """import a sumo python api with a safe fallback order.
+
+    prefer_traci=True  -> out-of-process traci (needed for GUI, and for
+                          crash-isolation so a SUMO engine fault surfaces as a
+                          catchable Python exception instead of SIGSEGV).
+    prefer_traci=False -> in-process libsumo (faster, headless only).
+    """
+    if not prefer_traci:
         try:
             import libsumo as api  # type: ignore
 
@@ -76,7 +82,12 @@ class BaseSumoEnv:
         if self.waiting_time_memory < 0:
             raise ValueError("waiting_time_memory must be >= 0")
 
-        self._api = _ensure_sumo_api(self.gui and not self.use_libsumo)
+        # Use traci (out-of-process) when GUI is requested OR libsumo is disabled
+        # (--no-libsumo). Previously this was `and`, which short-circuited to
+        # False in headless mode and silently kept libsumo in-process even when
+        # use_libsumo=False — making --no-libsumo a no-op and leaving every
+        # headless job exposed to the libsumo SIGSEGV it was meant to avoid.
+        self._api = _ensure_sumo_api(self.gui or not self.use_libsumo)
         self._is_libsumo = self._api.__name__.lower().endswith("libsumo")
 
         self.label = str(uuid.uuid4())
