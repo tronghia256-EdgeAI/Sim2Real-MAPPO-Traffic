@@ -260,6 +260,21 @@ class RunningMeanStd:
 # ---------------------------------------------------------------------
 # Utilities
 # ---------------------------------------------------------------------
+def _find_latest_checkpoint(ckpt_parent: Path) -> Optional[Path]:
+    """Return the last_model.pt with the highest global_step across all run dirs."""
+    best: Optional[Path] = None
+    best_step = -1
+    for p in ckpt_parent.glob("*/last_model.pt"):
+        try:
+            ckpt = torch.load(p, map_location="cpu", weights_only=False)
+            step = int(ckpt.get("global_step", 0))
+            if step > best_step:
+                best, best_step = p, step
+        except Exception:
+            continue
+    return best
+
+
 def set_seed(seed: int) -> None:
     random.seed(seed)
     np.random.seed(seed)
@@ -663,6 +678,28 @@ def train(args: argparse.Namespace) -> None:
     update_idx = 0
     best_mean_reward = -float("inf")
     start_time = time.time()
+
+    # Auto-resume: on crash-restart, pick up from the most advanced last_model.pt
+    # across all previous run dirs. SUMO starts a fresh episode (state not saved)
+    # but the policy/optimizer/normalizer states are restored — net progress is kept.
+    _resume_ckpt = _find_latest_checkpoint(Path(train_cfg.ckpt_dir))
+    if _resume_ckpt is not None:
+        print(f"[resume] found checkpoint at {_resume_ckpt}")
+        _c = torch.load(_resume_ckpt, map_location=device, weights_only=False)
+        actor.load_state_dict(_c["actor_state_dict"])
+        critic.load_state_dict(_c["critic_state_dict"])
+        actor_optim.load_state_dict(_c["actor_optim_state_dict"])
+        critic_optim.load_state_dict(_c["critic_optim_state_dict"])
+        actor_scheduler.load_state_dict(_c["actor_scheduler_state_dict"])
+        critic_scheduler.load_state_dict(_c["critic_scheduler_state_dict"])
+        if "obs_rms" in _c:
+            obs_rms.load_state_dict(_c["obs_rms"])
+        if "state_rms" in _c:
+            state_rms.load_state_dict(_c["state_rms"])
+        global_step = int(_c.get("global_step", 0))
+        episode_count = int(_c.get("episode_count", 0))
+        update_idx = global_step // train_cfg.rollout_horizon
+        print(f"[resume] restored global_step={global_step}, update_idx={update_idx}")
 
     global_state = extract_global_state(info_dict, fallback=flatten_obs_dict(obs_dict, tls_ids))
 
