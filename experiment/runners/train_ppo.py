@@ -877,6 +877,13 @@ def train(args: argparse.Namespace) -> None:
             axis=0,
         )  # (T, N)
 
+        # shared-reward: replace per-agent rewards with team mean so all agents
+        # receive the same signal — incentivises coordination (e.g. green-wave
+        # on corridor networks) at the cost of per-agent credit assignment.
+        if getattr(args, "shared_reward", False):
+            team_rewards = rewards_mat.mean(axis=1, keepdims=True)          # (T,1)
+            rewards_mat = np.repeat(team_rewards, len(tls_ids), axis=1)     # (T,N)
+
         adv_cols: List[np.ndarray] = []
         ret_cols: List[np.ndarray] = []
         for agent_idx in range(len(tls_ids)):
@@ -1359,6 +1366,9 @@ def parse_args() -> argparse.Namespace:
                         help="VI-F reward ablation (default 'full' = reward 1.2.0)")
     parser.add_argument("--obs-ablation", choices=list(OBS_ABLATIONS), default="none",
                         help="VI-F observation ablation (default 'none')")
+    parser.add_argument("--shared-reward", action="store_true",
+                        help="Replace per-agent rewards with team mean before GAE "
+                             "(incentivises coordination; useful for corridor networks)")
     parser.add_argument("--reward-scale", type=float, default=1.0)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--tls-ids", nargs="*", default=[])
