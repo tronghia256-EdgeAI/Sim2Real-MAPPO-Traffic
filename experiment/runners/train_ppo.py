@@ -566,6 +566,7 @@ def make_env(args: argparse.Namespace) -> Tuple[MappoTrafficEnv, Any]:
         speed_cap=args.speed_cap,
         use_external_state=False,
         obs_mode=getattr(args, "obs_mode", "proxy"),
+        upstream_phase_obs=getattr(args, "upstream_phase_obs", False),
         debug=args.debug,
         reward_scale=args.reward_scale,
         **ablation_kwargs,
@@ -1406,6 +1407,11 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--shared-reward", action="store_true",
                         help="Replace per-agent rewards with team mean before GAE "
                              "(incentivises coordination; useful for corridor networks)")
+    parser.add_argument("--upstream-phase-obs", action="store_true",
+                        help="Append the mean phase one-hot of each agent's upstream "
+                             "TLS neighbours to its observation (+4 dims/agent) — the "
+                             "green-wave coordination signal a local obs lacks; for "
+                             "corridor networks (n2_corridor)")
     parser.add_argument("--reward-scale", type=float, default=1.0)
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--tls-ids", nargs="*", default=[])

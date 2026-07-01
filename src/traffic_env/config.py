@@ -57,6 +57,21 @@ DEFAULT_TLS_FEATURE_NAMES: Tuple[str, ...] = (
     "pressure_norm",
 )
 
+# Corridor coordination (n2_corridor rescue): the mean phase one-hot of the
+# TLS whose outgoing edges feed this TLS's controlled approaches (its upstream
+# signal neighbours, from getControlledLinks topology). Gives each agent the
+# neighbour-phase context needed to learn green-wave phase offsets — the signal
+# a purely local PRESSLIGHT obs lacks. Appended to tls_feature_names when
+# build_default_config(upstream_phase_obs=True); the ObservationBuilder detects
+# these names and fills them, and eval reconstructs the exact obs from the
+# persisted tls_feature_names, so no extra eval plumbing is required.
+UPSTREAM_PHASE_FEATURE_NAMES: Tuple[str, ...] = (
+    "upstream_phase_one_hot_0",
+    "upstream_phase_one_hot_1",
+    "upstream_phase_one_hot_2",
+    "upstream_phase_one_hot_3",
+)
+
 DEFAULT_REWARD_WEIGHTS: Dict[str, float] = {
     "queue":            -1.0,   # nonlinear (mean_q^2); primary congestion signal
     "pressure":         -0.5,   # phase-aware imbalance (PRESSLIGHT); 0 if green_lanes absent
@@ -433,6 +448,7 @@ def build_default_config(
     drop_class_shares: bool = False,
     drop_pressure_feature: bool = False,
     lane_truncated: bool = False,
+    upstream_phase_obs: bool = False,
     lane_feature_names: Optional[Tuple[str, ...]] = None,
     tls_feature_names: Optional[Tuple[str, ...]] = None,
 ) -> TrafficEnvConfig:
@@ -447,6 +463,8 @@ def build_default_config(
     class-share features, ``drop_pressure_feature`` removes the TLS pressure
     feature, ``lane_truncated`` reproduces the pre-S1 blind-spot obs, and
     ``pressure_signed`` / ``queue_mean_of_squares`` toggle the reward-1.2.0 fixes.
+    ``upstream_phase_obs`` appends UPSTREAM_PHASE_FEATURE_NAMES to the TLS
+    features (corridor green-wave coordination signal).
     ``lane_feature_names`` / ``tls_feature_names`` override the derived tuples
     verbatim (used by eval to rebuild an ablation checkpoint's exact obs space).
     """
@@ -469,6 +487,8 @@ def build_default_config(
         tls_feature_names = DEFAULT_TLS_FEATURE_NAMES
         if drop_pressure_feature:
             tls_feature_names = tuple(n for n in tls_feature_names if n != "pressure_norm")
+        if upstream_phase_obs:
+            tls_feature_names = tls_feature_names + UPSTREAM_PHASE_FEATURE_NAMES
 
     reward = RewardConfig(reward_scale=reward_scale,
                           pressure_signed=pressure_signed,
@@ -515,6 +535,7 @@ __all__ = [
     "DEFAULT_TLS_FEATURE_NAMES",
     "DEFAULT_TLS_IDS",
     "PRIVILEGED_EXTRA_LANE_FEATURE_NAMES",
+    "UPSTREAM_PHASE_FEATURE_NAMES",
     "MultiAgentConfig",
     "ObservationConfig",
     "RewardConfig",

@@ -201,6 +201,11 @@ class ObservationBuilder:
     _privileged: bool = field(default=False, init=False)
     # VI-F ablation: reproduce the pre-S1 blind-spot obs (raw lanes, no approach aggregation)
     _lane_truncated: bool = field(default=False, init=False)
+    # corridor coordination: emit UPSTREAM_PHASE_FEATURE_NAMES (mean phase one-hot
+    # of upstream TLS neighbours). Detected from tls_feature_names so it survives
+    # eval reconstruction. _upstream_map is topology, cached per connection.
+    _upstream_phase_obs: bool = field(default=False, init=False)
+    _upstream_map: Optional[Dict[str, List[str]]] = field(default=None, init=False)
 
     def __post_init__(self) -> None:
         self.config.validate()
@@ -217,6 +222,10 @@ class ObservationBuilder:
         self._external_lane_cache = None
         self._privileged = self.config.observation.obs_mode == "privileged"
         self._lane_truncated = bool(getattr(self.config.observation, "lane_truncated", False))
+        self._upstream_phase_obs = any(
+            name.startswith("upstream_phase_one_hot") for name in self._tls_feature_names
+        )
+        self._upstream_map = None
         self._fast_metrics_enabled = tc is not None
         self._lane_length_cache = {}
         if tc is not None:
@@ -236,6 +245,7 @@ class ObservationBuilder:
         self.sumo_conn = sumo_conn
         # new simulation -> static caches invalid, subscriptions cleared by SUMO
         self._lane_length_cache = {}
+        self._upstream_map = None
         self._fast_metrics_enabled = tc is not None
 
     def inject_vision_cache(self, lane_cache: Dict[str, LaneMetrics]) -> None:
@@ -735,6 +745,64 @@ class ObservationBuilder:
         vec[phase] = 1.0
         return vec
 
+    def _compute_upstream_map(self) -> Dict[str, List[str]]:
+        """map each TLS to the TLS neighbours whose outgoing edges feed it.
+
+        Upstream(X) = { Y : an edge leaving junction Y enters an approach that X
+        controls }, derived from getControlledLinks (each link is (in_lane,
+        out_lane, via_lane)). On a bidirectional corridor this yields both spatial
+        neighbours, so every junction — including the endpoints — gets a coordination
+        signal. Topology is static, so this is computed once per connection.
+        Returns an empty map on any failure (e.g. no live SUMO connection).
+        """
+        tls_ids = list(self._resolve_tls_ids(None))
+        incoming: Dict[str, set] = {t: set() for t in tls_ids}
+        outgoing: Dict[str, set] = {t: set() for t in tls_ids}
+        conn = self.sumo_conn
+        for tls_id in tls_ids:
+            try:
+                links = conn.trafficlight.getControlledLinks(tls_id)
+            except Exception:
+                links = []
+            for group in links or []:
+                for link in group or []:
+                    if not link:
+                        continue
+                    in_lane = str(link[0]) if len(link) > 0 and link[0] else ""
+                    out_lane = str(link[1]) if len(link) > 1 and link[1] else ""
+                    if in_lane and not in_lane.startswith(":"):
+                        incoming[tls_id].add(in_lane.rsplit("_", 1)[0])
+                    if out_lane and not out_lane.startswith(":"):
+                        outgoing[tls_id].add(out_lane.rsplit("_", 1)[0])
+        upstream: Dict[str, List[str]] = {}
+        for x in tls_ids:
+            upstream[x] = [
+                y for y in tls_ids if y != x and (incoming[x] & outgoing[y])
+            ]
+        return upstream
+
+    def _upstream_phase_vector(self, tls_id: str) -> List[float]:
+        """mean phase one-hot over this TLS's upstream neighbours (4-d, in [0,1]).
+
+        All-zero when there is no upstream TLS (fringe junction) or topology
+        could not be resolved — a valid 'no coordination signal' encoding.
+        """
+        if self._upstream_map is None:
+            try:
+                self._upstream_map = self._compute_upstream_map()
+            except Exception:
+                self._upstream_map = {}
+        ups = self._upstream_map.get(tls_id, [])
+        acc = [0.0, 0.0, 0.0, 0.0]
+        if not ups:
+            return acc
+        for y in ups:
+            one_hot = self._phase_one_hot(y)
+            for i in range(4):
+                acc[i] += one_hot[i]
+        n = float(len(ups))
+        return [a / n for a in acc]
+
     def _get_vehicle_geometry(self, vehicle_id: str) -> Tuple[float, float, str]:
         """retrieve vehicle geometry and classify it into a traffic class."""
         type_id = "unknown"
@@ -920,6 +988,14 @@ class ObservationBuilder:
         # S2: signed pressure proxy already returns a [0,1] feature
         # (0.5 = balanced) — no further cap normalisation.
         feature_map["pressure_norm"] = self._tls_pressure_proxy(tls_id, lane_cache)
+
+        # corridor coordination: mean phase one-hot of upstream TLS neighbours
+        if self._upstream_phase_obs:
+            up_vec = self._upstream_phase_vector(tls_id)
+            for idx, value in enumerate(up_vec):
+                key = f"upstream_phase_one_hot_{idx}"
+                if key in feature_map:
+                    feature_map[key] = float(value)
 
         for name, idx in self._tls_feature_index.items():
             if idx < len(features):

@@ -184,10 +184,12 @@ class StateExtractor:
         controlled_lanes_dict: Dict[str, List[str]],
         lane_rois:             Dict[str, LaneROI],
         lane_groups:           Optional[Dict[str, Tuple[List[str], List[str]]]] = None,
-        motorbike_class_ids: Optional[Sequence[int]] = None,  
-        heavy_class_ids:     Optional[Sequence[int]] = None, 
+        motorbike_class_ids: Optional[Sequence[int]] = None,
+        heavy_class_ids:     Optional[Sequence[int]] = None,
         px_per_meter:          float = 20.0,
         stop_speed_m_s:        float = 0.1,
+        upstream_phase_obs:    bool  = False,
+        upstream_tls_map:      Optional[Dict[str, List[str]]] = None,
         max_lanes_per_tls:     int   = 4,
         speed_cap:             float = 15.0,
         max_green_time:        float = 60.0,
@@ -202,6 +204,12 @@ class StateExtractor:
         self.lane_rois             = dict(lane_rois)
         self.lane_groups           = lane_groups or {}
         self.max_lanes_per_tls     = int(max_lanes_per_tls)
+        # corridor coordination: must match training upstream_phase_obs. The
+        # orchestrator supplies upstream_tls_map (which TLS feed each TLS) and the
+        # full phase_map at inference, so the neighbour phases are known without
+        # any camera. Keep formula-identical to ObservationBuilder._upstream_phase_vector.
+        self.upstream_phase_obs    = bool(upstream_phase_obs)
+        self.upstream_tls_map      = {k: list(v) for k, v in (upstream_tls_map or {}).items()}
 
         if self.max_lanes_per_tls <= 0:
             raise ValueError("max_lanes_per_tls must be > 0")
@@ -232,7 +240,8 @@ class StateExtractor:
 
         # ── FIX-4: recomputed with lane_feature_dim = 5 ──────────────────────
         self.lane_feature_dim = len(self.FEATURE_NAMES)          # 5
-        self.tls_feature_dim  = 6                                 # 4-hot + green + pressure
+        # 4-hot + green + pressure (+4 upstream one-hot when upstream_phase_obs)
+        self.tls_feature_dim  = 6 + (4 if self.upstream_phase_obs else 0)
         self.observation_dim  = len(self.tls_ids) * (
             self.max_lanes_per_tls * self.lane_feature_dim + self.tls_feature_dim
         )
@@ -327,6 +336,10 @@ class StateExtractor:
             state.extend(self._phase_one_hot(int(phase_map.get(tls_id, 0))))
             state.append(self._normalize(float(green_timers.get(tls_id, 0.0)), self.max_green_time))
             state.append(self._tls_pressure_proxy(tls_id, lane_ids, lane_metrics_cache))
+
+            # +4 upstream neighbour phase one-hot (corridor coordination)
+            if self.upstream_phase_obs:
+                state.extend(self._upstream_phase_vector(tls_id, phase_map))
 
         obs = np.asarray(state, dtype=np.float32)
         if obs.shape != (self.observation_dim,):
@@ -517,6 +530,25 @@ class StateExtractor:
         qa = sum(eff_q(l) for l in group_a) / max(len(group_a), 1)
         qb = sum(eff_q(l) for l in group_b) / max(len(group_b), 1)
         return float(np.clip(0.5 * (1.0 + qa - qb), 0.0, 1.0))
+
+    def _upstream_phase_vector(self, tls_id: str, phase_map: Dict[str, int]) -> List[float]:
+        """Mean phase one-hot over this TLS's upstream neighbours (4-d, in [0,1]).
+
+        Formula-identical to ObservationBuilder._upstream_phase_vector(): the
+        neighbour set comes from upstream_tls_map (topology, supplied by the
+        orchestrator) and each neighbour's phase from the shared phase_map.
+        All-zero when a TLS has no upstream neighbour (corridor endpoint).
+        """
+        ups = self.upstream_tls_map.get(tls_id, [])
+        acc = [0.0, 0.0, 0.0, 0.0]
+        if not ups:
+            return acc
+        for y in ups:
+            one_hot = self._phase_one_hot(int(phase_map.get(y, 0)))
+            for i in range(4):
+                acc[i] += one_hot[i]
+        n = float(len(ups))
+        return [a / n for a in acc]
 
     # ──────────────────────────────────────────────────────────────────────────
     # Input helpers
