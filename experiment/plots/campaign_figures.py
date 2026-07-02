@@ -114,7 +114,10 @@ def discover_runs(campaign_dir: Path) -> Dict[Tuple[str, str, str], List[Path]]:
         net, algo, obs, _seed = parsed
         csvs = sorted(job_dir.glob("**/train_episodes.csv"))
         if csvs:
-            out.setdefault((net, algo, obs), []).append(csvs[0])
+            # one entry PER SEED = the job_dir; its resume segments are stitched
+            # later (see _stitch). Picking csvs[0] would keep only the first
+            # pre-crash segment and truncate the curve.
+            out.setdefault((net, algo, obs), []).append(job_dir)
     return out
 
 
@@ -135,24 +138,58 @@ def _read_csv(path: Path) -> Dict[str, np.ndarray]:
 def _smooth(y: np.ndarray, window: int) -> np.ndarray:
     if window <= 1 or y.size < window:
         return y
-    kernel = np.ones(window) / window
-    return np.convolve(y, kernel, mode="same")
+    # Normalise by the ACTUAL number of overlapping taps at each position so the
+    # boundaries are not suppressed toward zero (plain mode="same" divides edge
+    # points by the full window, halving the first/last samples and faking a
+    # low-start / late-drop in the curve).
+    kernel = np.ones(window)
+    num = np.convolve(y, kernel, mode="same")
+    den = np.convolve(np.ones_like(y), kernel, mode="same")
+    return num / den
+
+
+def _stitch(
+    job_dir: Path, filename: str, x_key: str, y_key: str,
+) -> Optional[Tuple[np.ndarray, np.ndarray]]:
+    """Merge all resume segments of ONE seed into a single (x, y) series.
+
+    A crashed+resumed job leaves several <run_id>/<filename> CSVs, each covering
+    a contiguous slice of global_step (with occasional overlap when a restart
+    re-ran a few episodes). We iterate run dirs in timestamp order (lexical sort
+    of the run_id) and map global_step -> y, so a later resume overwrites the
+    earlier value on any overlap. Returns steps sorted ascending.
+    """
+    merged: Dict[float, float] = {}
+    for p in sorted(job_dir.glob(f"**/{filename}")):
+        d = _read_csv(p)
+        if x_key not in d or y_key not in d:
+            continue
+        for xi, yi in zip(d[x_key], d[y_key]):
+            if np.isfinite(xi):
+                merged[float(xi)] = float(yi)
+    if len(merged) < 2:
+        return None
+    xs = np.array(sorted(merged))
+    ys = np.array([merged[x] for x in xs])
+    return xs, ys
 
 
 def _multiseed_band(
-    csvs: List[Path], x_key: str, y_key: str, n_grid: int = 200, smooth_w: int = 15,
+    job_dirs: List[Path], filename: str, x_key: str, y_key: str,
+    n_grid: int = 200, smooth_w: int = 15,
 ) -> Optional[Tuple[np.ndarray, np.ndarray, np.ndarray]]:
-    """Interpolate each seed's (x,y) onto a common grid -> (grid, mean, std)."""
+    """Stitch each seed's resume segments, interpolate onto a common grid
+    -> (grid, mean, std)."""
     series = []
     x_max_common = np.inf
-    for p in csvs:
-        d = _read_csv(p)
-        if x_key not in d or y_key not in d or d[x_key].size < 2:
+    for jd in job_dirs:
+        st = _stitch(jd, filename, x_key, y_key)
+        if st is None:
             continue
-        x, y = d[x_key], _smooth(d[y_key], smooth_w)
-        order = np.argsort(x)
-        series.append((x[order], y[order]))
-        x_max_common = min(x_max_common, float(x[order][-1]))
+        x, y = st
+        y = _smooth(y, smooth_w)
+        series.append((x, y))
+        x_max_common = min(x_max_common, float(x[-1]))
     if not series or not np.isfinite(x_max_common):
         return None
     x_min = min(float(s[0][0]) for s in series)
@@ -175,16 +212,17 @@ def fig_convergence(campaign_dir: Path) -> None:
     fig, axes = plt.subplots(1, len(networks), figsize=(PAGE_W, 2.8), squeeze=False)
     for ax, net in zip(axes[0], networks):
         plotted = False
-        for (n, algo, obs), csvs in sorted(runs.items()):
+        for (n, algo, obs), job_dirs in sorted(runs.items()):
             if n != net:
                 continue
-            band = _multiseed_band(csvs, "global_step", "mean_reward")
+            band = _multiseed_band(job_dirs, "train_episodes.csv",
+                                   "global_step", "mean_reward")
             if band is None:
                 continue
             grid, mean, std = band
             arm = f"{algo}_{obs}"
             color = ARM_COLORS.get(arm, None)
-            ax.plot(grid / 1e3, mean, color=color, label=f"{arm} (n={len(csvs)})")
+            ax.plot(grid / 1e3, mean, color=color, label=f"{arm} (n={len(job_dirs)})")
             ax.fill_between(grid / 1e3, mean - std, mean + std, color=color, alpha=0.2, linewidth=0)
             plotted = True
         ax.set_title(net)
@@ -207,14 +245,13 @@ def fig_losses(campaign_dir: Path, arm: str = "mappo_proxy") -> None:
         print("[fig] losses: no tblogs — skip")
         return
     algo, obs = arm.split("_", 1)
-    upd_csvs: List[Path] = []
+    upd_jobs: List[Path] = []
     for job_dir in sorted(tblogs.iterdir()):
         parsed = parse_job_name(job_dir.name) if job_dir.is_dir() else None
         if parsed and parsed[1] == algo and parsed[2] == obs:
-            found = sorted(job_dir.glob("**/train_updates.csv"))
-            if found:
-                upd_csvs.append(found[0])
-    if not upd_csvs:
+            if list(job_dir.glob("**/train_updates.csv")):
+                upd_jobs.append(job_dir)
+    if not upd_jobs:
         print(f"[fig] losses: no train_updates.csv for {arm} — skip")
         return
 
@@ -223,7 +260,7 @@ def fig_losses(campaign_dir: Path, arm: str = "mappo_proxy") -> None:
              ("value_loss", "Value loss", True),
              ("entropy", "Entropy / KL", False)]
     for ax, (key, label, logy) in zip(axes, specs):
-        band = _multiseed_band(upd_csvs, "global_step", key, smooth_w=50)
+        band = _multiseed_band(upd_jobs, "train_updates.csv", "global_step", key, smooth_w=50)
         if band is None:
             continue
         grid, mean, std = band
@@ -236,13 +273,17 @@ def fig_losses(campaign_dir: Path, arm: str = "mappo_proxy") -> None:
         ax.set_title(label)
         ax.grid(True)
         if key == "entropy":
-            kl = _multiseed_band(upd_csvs, "global_step", "approx_kl", smooth_w=50)
+            kl = _multiseed_band(upd_jobs, "train_updates.csv", "global_step", "approx_kl", smooth_w=50)
             if kl is not None:
                 axk = ax.twinx()
                 axk.plot(kl[0] / 1e3, kl[1], color="#e65100", linestyle="--")
                 axk.axhline(0.015, color="#e65100", linestyle=":", linewidth=0.8)
                 axk.set_ylabel("Approx KL", color="#e65100")
-    fig.suptitle(f"Training diagnostics ({arm}, mean over {len(upd_csvs)} seeds)", fontsize=8)
+    fig.suptitle(f"Training diagnostics ({arm}, mean over {len(upd_jobs)} seeds)",
+                 fontsize=11, y=0.99)
+    # reserve headroom for the suptitle (subplots_adjust, not tight_layout, since
+    # the entropy panel's twinx KL axis is incompatible with tight_layout)
+    fig.subplots_adjust(top=0.86, wspace=0.4)
     out = OUT_DIR / "training_losses.pdf"
     fig.savefig(out, bbox_inches="tight", dpi=300)
     plt.close(fig)
