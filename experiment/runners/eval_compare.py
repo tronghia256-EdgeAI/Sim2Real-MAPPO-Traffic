@@ -201,7 +201,6 @@ def run_env_episode(
         use_libsumo=False,  # traci required for tripinfo flush + parity with baselines
         extra_sumo_args=[
             "--tripinfo-output", str(tripinfo_path),
-            "--tripinfo-output.write-unfinished",
         ] + list(extra_args or []),
     )
     obs_dict, _ = env.reset(seed=seed)
