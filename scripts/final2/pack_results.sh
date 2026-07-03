@@ -21,7 +21,7 @@ find results/paper1_mappo/ckpts_clean -type f                >> "${LIST}" 2>/dev
 
 # per-campaign: manifests, job logs, and per-run artifacts needed to reproduce
 # figures/tables locally (checkpoints, run_config, bench, CSV logs)
-for camp in final2_main_ext final2_obsabl_03M final2_n2_05M; do
+for camp in final2_main_ext final2_obsabl_03M final2_n2_03M; do
     d="results/paper1_mappo/${camp}"
     [ -d "${d}" ] || continue
     find "${d}" -maxdepth 1 -type f                          >> "${LIST}"

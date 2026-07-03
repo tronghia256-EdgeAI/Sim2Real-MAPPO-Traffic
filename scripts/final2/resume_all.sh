@@ -16,15 +16,18 @@ source .venv/bin/activate
 WORKERS_MAIN="${WORKERS_MAIN:-10}"
 WORKERS_OBS="${WORKERS_OBS:-9}"
 WORKERS_N2="${WORKERS_N2:-5}"
+RUN_MAIN_EXT="${RUN_MAIN_EXT:-0}"   # keep in sync with train_stage1_gate_n2.sh
 
 mkdir -p results/paper1_mappo/final2_launchlogs
 
-nohup python scripts/parallel_launcher.py --campaign-id final2_main_ext \
-    --networks n3_grid --algos mappo ippo --obs-modes proxy \
-    --seeds 2024 2025 2026 2027 2028 \
-    --total-timesteps 500000 --max-workers "${WORKERS_MAIN}" \
-    -- --no-libsumo \
-    >> results/paper1_mappo/final2_launchlogs/main_ext.launcher.log 2>&1 &
+if [ "${RUN_MAIN_EXT}" = "1" ]; then
+    nohup python scripts/parallel_launcher.py --campaign-id final2_main_ext \
+        --networks n3_grid --algos mappo ippo --obs-modes proxy \
+        --seeds 2024 2025 2026 2027 2028 \
+        --total-timesteps 300000 --max-workers "${WORKERS_MAIN}" \
+        -- --no-libsumo \
+        >> results/paper1_mappo/final2_launchlogs/main_ext.launcher.log 2>&1 &
+fi
 
 nohup python scripts/parallel_launcher.py --campaign-id final2_obsabl_03M \
     --networks n3_grid --algos mappo --obs-modes proxy \
@@ -36,11 +39,11 @@ nohup python scripts/parallel_launcher.py --campaign-id final2_obsabl_03M \
 
 # includes seed 42: if it already finished, bench.json makes it a no-op skip.
 # ONLY resume n2 with all 5 seeds if the gate PASSED (otherwise keep --seeds 42).
-nohup python scripts/parallel_launcher.py --campaign-id final2_n2_05M \
+nohup python scripts/parallel_launcher.py --campaign-id final2_n2_03M \
     --networks n2_corridor --algos mappo --obs-modes proxy \
     --seeds 42 123 456 789 1337 \
-    --total-timesteps 500000 --max-workers "${WORKERS_N2}" \
+    --total-timesteps 300000 --max-workers "${WORKERS_N2}" \
     -- --no-libsumo \
     >> results/paper1_mappo/final2_launchlogs/n2.launcher.log 2>&1 &
 
-echo "all three campaign launchers resumed."
+echo "campaign launchers resumed."

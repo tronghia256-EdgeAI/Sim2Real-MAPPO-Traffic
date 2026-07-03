@@ -24,12 +24,18 @@ LOGS=results/paper1_mappo/final2_evallogs
 mkdir -p "${LOGS}"
 
 echo "=== [1/4] collect clean checkpoints (bench.json run dir per job) ==="
-python scripts/final2/collect_checkpoints.py --require-bench \
-    --models-dir results/paper1_mappo/final2_main_ext/models   --out "${CLEAN}/final2_main_ext"
+HAVE_EXT=0
+if [ -d results/paper1_mappo/final2_main_ext/models ]; then
+    HAVE_EXT=1
+    python scripts/final2/collect_checkpoints.py --require-bench \
+        --models-dir results/paper1_mappo/final2_main_ext/models   --out "${CLEAN}/final2_main_ext"
+else
+    echo "(final2_main_ext not trained — eval A runs on the 5 old seeds only)"
+fi
 python scripts/final2/collect_checkpoints.py --require-bench \
     --models-dir results/paper1_mappo/final2_obsabl_03M/models --out "${CLEAN}/final2_obsabl_03M"
 python scripts/final2/collect_checkpoints.py --require-bench \
-    --models-dir results/paper1_mappo/final2_n2_05M/models     --out "${CLEAN}/final2_n2_05M"
+    --models-dir results/paper1_mappo/final2_n2_03M/models     --out "${CLEAN}/final2_n2_03M"
 
 echo "=== [2/4] checkpoint counts ==="
 count() { ls $1 2>/dev/null | wc -l; }
@@ -38,20 +44,25 @@ N_MAPPO=$(( $(count "${CLEAN}/old_main/n3_grid_mappo_proxy_seed*/best_model.pt")
 N_IPPO=$((  $(count "${CLEAN}/old_main/n3_grid_ippo_proxy_seed*/best_model.pt") \
           + $(count "${CLEAN}/final2_main_ext/n3_grid_ippo_proxy_seed*/best_model.pt") ))
 N_PRIV=$(count "${CLEAN}/old_main/n3_grid_mappo_privileged_seed*/best_model.pt")
-N_N2=$(count "${CLEAN}/final2_n2_05M/n2_corridor_mappo_proxy_seed*/best_model.pt")
-echo "mappo=${N_MAPPO}/10  ippo=${N_IPPO}/10  privileged=${N_PRIV}/5  n2=${N_N2}/5"
-[ "${N_MAPPO}" -eq 10 ] || { echo "FATAL: expected 10 mappo checkpoints"; exit 1; }
-[ "${N_IPPO}"  -eq 10 ] || { echo "FATAL: expected 10 ippo checkpoints"; exit 1; }
+N_N2=$(count "${CLEAN}/final2_n2_03M/n2_corridor_mappo_proxy_seed*/best_model.pt")
+N_EXPECT=$(( HAVE_EXT == 1 ? 10 : 5 ))
+echo "mappo=${N_MAPPO}/${N_EXPECT}  ippo=${N_IPPO}/${N_EXPECT}  privileged=${N_PRIV}/5  n2=${N_N2}/5"
+[ "${N_MAPPO}" -eq "${N_EXPECT}" ] || { echo "FATAL: expected ${N_EXPECT} mappo checkpoints"; exit 1; }
+[ "${N_IPPO}"  -eq "${N_EXPECT}" ] || { echo "FATAL: expected ${N_EXPECT} ippo checkpoints"; exit 1; }
 [ "${N_PRIV}"  -eq 5 ]  || { echo "FATAL: expected 5 privileged checkpoints"; exit 1; }
 [ "${N_N2}"    -ge 1 ]  || echo "WARN: no n2 checkpoints — eval B will be skipped"
 
 echo "=== [3/4] pooling parity (old vs new seeds MUST match exactly) ==="
-python scripts/final2/check_run_config_parity.py \
-    --ref "${CLEAN}/old_main/n3_grid_mappo_proxy_seed42/run_config.json" \
-    --others "${CLEAN}/final2_main_ext/n3_grid_mappo_proxy_seed*/run_config.json"
-python scripts/final2/check_run_config_parity.py \
-    --ref "${CLEAN}/old_main/n3_grid_ippo_proxy_seed42/run_config.json" \
-    --others "${CLEAN}/final2_main_ext/n3_grid_ippo_proxy_seed*/run_config.json"
+if [ "${HAVE_EXT}" -eq 1 ]; then
+    python scripts/final2/check_run_config_parity.py \
+        --ref "${CLEAN}/old_main/n3_grid_mappo_proxy_seed42/run_config.json" \
+        --others "${CLEAN}/final2_main_ext/n3_grid_mappo_proxy_seed*/run_config.json"
+    python scripts/final2/check_run_config_parity.py \
+        --ref "${CLEAN}/old_main/n3_grid_ippo_proxy_seed42/run_config.json" \
+        --others "${CLEAN}/final2_main_ext/n3_grid_ippo_proxy_seed*/run_config.json"
+else
+    echo "(skipped — no extension seeds to pool)"
+fi
 
 echo "=== [4/4] launching evals (A long pole; tail ${LOGS}/*.log) ==="
 
@@ -74,7 +85,7 @@ PID_B=""
 if [ "${N_N2}" -ge 1 ]; then
     nohup python experiment/runners/eval_compare.py \
         --network n2_corridor \
-        --checkpoint "${CLEAN}/final2_n2_05M/n2_corridor_mappo_proxy_seed*/best_model.pt" \
+        --checkpoint "${CLEAN}/final2_n2_03M/n2_corridor_mappo_proxy_seed*/best_model.pt" \
         --methods mappo webster actuated maxpressure sotl fixed \
         --seeds ${ROUTE_SEEDS} \
         > "${LOGS}/B_n2.log" 2>&1 &

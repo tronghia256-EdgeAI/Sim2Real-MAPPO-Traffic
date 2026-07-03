@@ -22,13 +22,23 @@ may have to become "a certified single-digit concession to a loop-instrumented
 reference". The instrumented-reference framing already absorbs this; only the
 wording changes. Do not be surprised by it.
 
-## Job matrix (24 jobs)
+## Job matrix (14 jobs; +10 optional)
+
+> **ALL steps = 300k.** Every existing checkpoint (proxy / privileged / ippo /
+> reward ablation) was trained to `total_timesteps=300000` — the old
+> `final_main_05M` dir name is a misnomer. `check_run_config_parity.py`
+> compares `total_timesteps`, so a 0.5M arm can never be pooled with them.
 
 | Campaign id        | Arm                                            | Jobs | Steps |
 |--------------------|------------------------------------------------|------|-------|
-| `final2_main_ext`  | n3_grid × {mappo, ippo} × seeds 2024–2028      | 10   | 0.5M  |
 | `final2_obsabl_03M`| n3_grid × mappo × {no_class_shares, no_pressure_feature, lane_truncated} × seeds 42/123/456 | 9 | 0.3M |
-| `final2_n2_05M`    | n2_corridor × mappo × seeds 42/123/456/789/1337 (auto `--upstream-phase-obs --shared-reward`) | 5 | 0.5M |
+| `final2_n2_03M`    | n2_corridor × mappo × seeds 42/123/456/789/1337 (auto `--upstream-phase-obs --shared-reward`) | 5 | 0.3M |
+| `final2_main_ext`  | OPTIONAL (`RUN_MAIN_EXT=1`): n3_grid × {mappo, ippo} × seeds 2024–2028 | 10 | 0.3M |
+
+The n=10 significance extension is now opt-in: current strategy replaces it
+with two eval-time protocols run LOCALLY against the existing n=5 checkpoints
+(`scripts/final2/eval_tricks_local.ps1`): OOD-high-demand comparison (VI-D)
+and the decision-frequency boost (`eval_compare --learned-step-length 3`).
 
 Privileged stays n=5 (old seeds only): its claims (restriction cost 3.2%,
 descriptive) don't need certification. Optional extension if a reviewer
@@ -46,9 +56,11 @@ demands it: +5 privileged seeds ≈ 5 × ~50h extra.
 - **Cost estimate:** 56 vCPU ≈ $1.9–2.1/h × ~2.5 days training ≈ $115–125.
   After training, **downsize to 8 vCPU for the eval day** (evals are 3
   single-core pipelines): ≈ +$8. Total ≈ **$125–140**.
-- **Timeline (56 vCPU):** 0.5M jobs ~45–55 h; 0.3M jobs ~28–34 h; N2 jobs are
-  much lighter (2.8k veh vs 15k) and finish first. Eval A ~15–24 h.
-  **End-to-end ≈ 3.5–4 days.**
+- **Timeline (56 vCPU):** 0.3M jobs ~28–34 h; N2 jobs are much lighter
+  (2.8k veh vs 15k) and finish well before the obs-ablation arms. Eval A
+  ~8–15 h (n=5) / ~15–24 h (n=10 with `RUN_MAIN_EXT=1`).
+  **End-to-end ≈ 2–2.5 days** for the 14-job scope; a 32-vCPU VM suffices
+  (WORKERS_OBS=6) if main_ext stays off.
 
 ## Order of operations
 
@@ -66,9 +78,10 @@ demands it: +5 privileged seeds ≈ 5 × ~50h extra.
    demand integrity (n3 eval = 14888, n2 < 5000), check_obs_match, 2 smoke
    runs incl. the "N2 Corridor detected" auto-flag print. Record
    `sumo --version` for the sec5 TODO.
-6. `bash scripts/final2/train_stage1_gate_n2.sh` — starts the 19 non-gated
-   jobs + the n2 seed-42 gate job; auto-checks run_config parity vs old seeds
-   after 7 min (kill early if it screams).
+6. `bash scripts/final2/train_stage1_gate_n2.sh` — starts the 9 obs-ablation
+   jobs + the n2 seed-42 gate job (add `RUN_MAIN_EXT=1` for the 10 extension
+   jobs; parity vs old seeds is then auto-checked after 7 min — kill early if
+   it screams).
 7. After ~6–10 h (n2 seed-42 ≥ ~150k steps):
    `bash scripts/final2/train_stage1_check_gate.sh`
    - **PASS** → `bash scripts/final2/train_stage2_n2_remaining.sh`

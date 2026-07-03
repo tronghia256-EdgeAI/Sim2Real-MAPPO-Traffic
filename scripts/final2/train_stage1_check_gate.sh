@@ -14,7 +14,7 @@ cd "$(dirname "$0")/../.."
 # shellcheck disable=SC1091
 source .venv/bin/activate
 
-GATE_DIR=results/paper1_mappo/final2_n2_05M/models/n2_corridor_mappo_proxy_seed42
+GATE_DIR=results/paper1_mappo/final2_n2_03M/models/n2_corridor_mappo_proxy_seed42
 ls "${GATE_DIR}"/*/best_model.pt >/dev/null 2>&1 || { echo "no best_model.pt under ${GATE_DIR} yet"; exit 1; }
 
 echo "=== gate eval (n2, seeds 42 123 456, ~15-30 min) ==="

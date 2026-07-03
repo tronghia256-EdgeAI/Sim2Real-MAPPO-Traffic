@@ -169,20 +169,36 @@ ActionFn = Callable[[MappoTrafficEnv, Dict[str, np.ndarray], int, float], Dict[s
 
 
 def _build_env_cfg(scenario: Scenario, args: argparse.Namespace, obs_mode: str,
-                   obs_overrides: Optional[Dict[str, Any]] = None):
+                   obs_overrides: Optional[Dict[str, Any]] = None,
+                   step_length: Optional[int] = None,
+                   max_steps: Optional[int] = None):
     kw: Dict[str, Any] = dict(obs_overrides or {})
     return build_default_config(
         sumo_cfg_path=str(scenario.sumo_cfg),
         gui=False,
         tls_ids=scenario.tls_ids,
         manual_lane_groups=scenario.lane_groups,
-        step_length=args.step_length,
-        max_steps=args.max_steps,
+        step_length=step_length if step_length is not None else args.step_length,
+        max_steps=max_steps if max_steps is not None else args.max_steps,
         min_green_time=args.min_green_time,
         max_green_time=args.max_green_time,
         obs_mode=obs_mode,
         **kw,
     )
+
+
+def _learned_timing(args: argparse.Namespace) -> Tuple[int, int]:
+    """Decision interval + step budget for LEARNED methods only.
+
+    --learned-step-length (eval-time frequency boost) shortens the policy's
+    decision interval without retraining; the episode horizon in SECONDS is
+    preserved by rescaling the step budget, so tripinfo metrics stay comparable
+    with the baselines (which keep --step-length). min_green_time is still
+    enforced inside the env, and yellow_time (3 s) is the hard floor.
+    """
+    l_step = getattr(args, "learned_step_length", None) or args.step_length
+    l_max = int(round(args.max_steps * args.step_length / l_step))
+    return int(l_step), l_max
 
 
 def run_env_episode(
@@ -302,11 +318,13 @@ def eval_learned(
     the eval route-seeds, so n_samples == number of training seeds (the policy
     variance source). With a single checkpoint this degrades to a point estimate.
     """
+    l_step, l_max_steps = _learned_timing(args)
     samples: List[Dict[str, float]] = []
     for ci, ckpt in enumerate(checkpoints):
         obs_mode = _obs_mode_for_checkpoint(ckpt)
         env_cfg = _build_env_cfg(scenario, args, obs_mode,
-                                 obs_overrides=_obs_overrides_for_checkpoint(ckpt))
+                                 obs_overrides=_obs_overrides_for_checkpoint(ckpt),
+                                 step_length=l_step, max_steps=l_max_steps)
         obs_dim = env_cfg.local_obs_dim
         policy = PolicyLoader(
             checkpoint_path=ckpt, obs_dim=obs_dim, action_dim=2,
@@ -322,7 +340,7 @@ def eval_learned(
         seed_metrics: List[Dict[str, float]] = []
         for seed in seeds:
             tri = tmp / f"{method}_c{ci}_{seed}.xml"
-            m = run_env_episode(env_cfg, make_action, seed, args.max_steps, tri, extra_args=emi)
+            m = run_env_episode(env_cfg, make_action, seed, l_max_steps, tri, extra_args=emi)
             seed_metrics.append(m)
             _log_seed(f"{method}[{ci}]", seed, m)
         samples.append(_mean_metrics(seed_metrics))
@@ -571,6 +589,8 @@ def write_outputs(out_dir: Path, scenario_name: str, aggregates, report, args) -
         "split": args.split,
         "seeds": list(args.seeds),
         "max_steps": args.max_steps,
+        "step_length": getattr(args, "step_length", 5),
+        "learned_step_length": getattr(args, "learned_step_length", None),
         "min_green_time": args.min_green_time,
         "max_green_time": args.max_green_time,
         "reference": report["reference"],
@@ -610,6 +630,16 @@ def run(args: argparse.Namespace) -> dict:
 
     print(f"\nScenario: {scenario_name} ({args.split}) | {len(scenario.tls_ids)} TLS | "
           f"{len(seeds)} seeds | methods: {', '.join(args.methods)}")
+
+    lsl = getattr(args, "learned_step_length", None)
+    if lsl is not None:
+        if lsl < 3:
+            raise SystemExit("--learned-step-length must be >= 3 s (yellow_time is 3 s "
+                             "and must fit inside one decision step)")
+        l_step, l_max = _learned_timing(args)
+        print(f"[freq-boost] learned methods decide every {l_step}s ({l_max} steps, "
+              f"same {args.max_steps * args.step_length}s horizon); baselines stay at "
+              f"{args.step_length}s")
 
     checkpoints = {
         "mappo": resolve_checkpoints(args.checkpoint),
@@ -705,6 +735,12 @@ def parse_args() -> argparse.Namespace:
     p.add_argument("--max-steps", type=int, default=1080)
     p.add_argument("--step-length", type=int, default=5,
                    help="seconds per decision step (for the SUMO-native actuated duration)")
+    p.add_argument("--learned-step-length", type=int, default=None,
+                   help="eval-time frequency boost: decision interval (s) for the LEARNED "
+                        "methods only (mappo/ippo/privileged); baselines keep --step-length. "
+                        "The episode horizon in seconds is preserved by rescaling the step "
+                        "budget. Floor = yellow_time = 3 s. Report this in the paper when "
+                        "used — it is an eval-protocol change, not the training setting.")
     p.add_argument("--min-green-time", type=int, default=15)
     p.add_argument("--max-green-time", type=int, default=60)
 
