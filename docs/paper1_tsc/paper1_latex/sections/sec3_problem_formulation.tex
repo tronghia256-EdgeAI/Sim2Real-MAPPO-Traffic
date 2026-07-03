@@ -20,23 +20,17 @@ sets,
   \label{eq:joint_action}
 \end{equation}
 so that a joint action is $\mathbf{a}_t = (a_{1,t}, \dots, a_{N,t}) \in \mathcal{A}$.
-The tuple components are:
-\begin{itemize}
-  \item $\mathcal{N} = \{1, \dots, N\}$: the finite set of homogeneous agents, one per
-        signalized intersection.
-  \item $\mathcal{S}$: the global state space, encoding the microscopic configuration
-        of every vehicle and signal in the network.
-  \item $\mathcal{A}_i = \{0, 1\}$: the discrete per-agent action space, composed into
-        the joint space $\mathcal{A}$ via \eqref{eq:joint_action}.
-  \item $\mathcal{O}_i$: the local observation space of agent $i$, the
-        $26$-dimensional camera-computable proxy of Section~\ref{sec:obs_space}.
-  \item $\mathcal{P}\colon \mathcal{S} \times \mathcal{A} \to \Delta(\mathcal{S})$: the
-        transition kernel induced by the microscopic traffic dynamics, which also
-        enforces all safety-critical signal timing.
-  \item $\mathcal{R}\colon \mathcal{S} \times \mathcal{A} \to \mathbb{R}^{N}$: the
-        joint reward function, returning a per-agent scalar $r_{i,t}$.
-  \item $\gamma = 0.99$: the discount factor governing the effective horizon.
-\end{itemize}
+The tuple's classical elements follow their standard definitions:
+$\mathcal{N} = \{1, \dots, N\}$ is the set of homogeneous agents (one per signalized
+intersection), $\mathcal{S}$ is the global state encoding the microscopic configuration of
+every vehicle and signal, $\mathcal{P}\colon \mathcal{S} \times \mathcal{A} \to
+\Delta(\mathcal{S})$ is the transition kernel induced by the traffic dynamics (which also
+enforces all safety-critical signal timing), $\mathcal{R}\colon \mathcal{S} \times \mathcal{A}
+\to \mathbb{R}^{N}$ returns a per-agent scalar reward $r_{i,t}$, and $\gamma = 0.99$ is the
+discount factor. The two components central to this work are the \emph{per-agent action space}
+$\mathcal{A}_i = \{0, 1\}$---a binary phase-group selection composed into the joint space
+via~\eqref{eq:joint_action}---and the \emph{local observation space} $\mathcal{O}_i$, the
+$26$-dimensional camera-computable proxy detailed in Section~\ref{sec:obs_space}.
 Agents act at a fixed interval of $\Delta t = 5$~s over $1080$ decision steps
 ($5400$~s) per episode. The state $\mathcal{S}$ assumed by this model is, however,
 only available in simulation; reconciling it with what a deployed controller can
@@ -115,6 +109,7 @@ summarized in Table~\ref{tab:obs_space}.
   approach feature occupies index $5k{+}j$ for approach $k\in\{0,1,2,3\}$ and
   feature $j$; the four approaches fill indices $0$--$19$.}
   \label{tab:obs_space}
+  \vspace{-4mm}
   \resizebox{\columnwidth}{!}{%
   \begin{tabular}{clllc}
     \toprule
@@ -132,17 +127,19 @@ summarized in Table~\ref{tab:obs_space}.
     \bottomrule
   \end{tabular}}
 \end{table}
-Figure~\ref{fig:vision_proxy} traces this construction end to end.
-\begin{figure}[!t]
-  \centering
-  \includegraphics[width=\columnwidth]{assets/figures/fig1.pdf}
-  \caption{Vision-proxy construction $\hat{\phi}$: each approach ROI is reduced by the
-  YOLOv11\,+\,ByteTrack estimator to five bounded features; the four approaches form
-  the $20$ approach dimensions, and the six controller dimensions (phase one-hot,
-  green-timer, and the \emph{derived} signed group-mean pressure that reuses only the
-  approach queue values) complete the $26$-dimensional observation.}
-  \label{fig:vision_proxy}
-\end{figure}
+The end-to-end proxy construction is visualized later in Figure~\ref{fig:architecture} as
+part of the overall system architecture.
+% \begin{figure}[!t]
+%   \centering
+%   \includegraphics[width=\columnwidth]{assets/figures/fig1.pdf}
+%   \caption{Vision-proxy construction $\phi$: each approach ROI is reduced by the
+%   YOLOv11\,+\,ByteTrack estimator to five bounded features; the four approaches form
+%   the $20$ approach dimensions, and the six controller dimensions (phase one-hot,
+%   green-timer, and the \emph{derived} signed group-mean pressure that reuses only the
+%   approach queue values) complete the $26$-dimensional observation.}
+%   \label{fig:vision_proxy}
+%   \vspace{-4mm}
+% \end{figure}
 
 \subsection{Action Space and Signal Constraints}
 \label{sec:action_space}
@@ -168,7 +165,7 @@ spurious switch penalty. The $60$~s maximum green
 is \emph{not} a forced switch; it caps the accumulated green timer and sets the
 normalization scale of the \texttt{green\_timer\_norm} feature
 (Section~\ref{sec:obs_space}). Cross-movement starvation is therefore discouraged
-through the reward shaping (Section~IV) rather than hard-coded by $\mathcal{P}$,
+through the reward shaping (Section~\ref{sec:reward}) rather than hard-coded by $\mathcal{P}$,
 cleanly separating learned phase selection from operational safety independently of
 the policy parameters. 
 Figure~\ref{fig:signal_fsm} summarizes this two-phase logic and
@@ -184,6 +181,7 @@ the environment-enforced timing.
   the $60$~s maximum only caps the \texttt{green\_timer\_norm} feature and is not a
   forced switch.}
   \label{fig:signal_fsm}
+  \vspace{-4mm}
 \end{figure}
 \subsection{Sensing-Noise Model (Overview)}
 \label{sec:noise_model}
@@ -192,11 +190,11 @@ is meaningful only if the residual estimation error of the vision pipeline is
 bounded and accounted for. Rather than assume that the YOLOv11\,+\,ByteTrack
 estimators recover the proxy features exactly ($\varepsilon_{i,t} = 0$), we model
 their residual error explicitly as the perturbation $\varepsilon_{i,t}$
-of~\eqref{eq:projection} through five domain-specific modes: multiplicative error
-on the effective queue (and the pressure derived from it), additive jitter on
-low-speed estimates, a confusion flip rate on the class shares, an additive
-occupancy bias, and two structural failures---a one-step pipeline delay and
-single-camera dropout. The base ($1\times$) magnitudes are fixed on a documented
+of~\eqref{eq:projection} through five per-feature modes and two structural failures: a
+multiplicative calibration error on the effective queue, a matching calibration error on
+the queue-derived pressure, additive jitter on low-speed estimates, a confusion flip rate
+on the class shares, and an additive occupancy bias, together with a one-step pipeline
+delay and a single-camera dropout. The base ($1\times$) magnitudes are fixed on a documented
 basis~\cite{zhang2022_bytetrack,khanam2024_yolov11}, with one exception: the
 class-confusion flip rate is measured directly from the detector's confusion
 matrix on the held-out validation set. A fuller per-feature recovery study on
@@ -204,3 +202,16 @@ labeled trajectory frames is left to the companion field deployment. The full pa
 $\{0\times, 0.5\times, 1\times, 2\times\}$ degradation sweep that drives the
 robustness evaluation are presented in Section~\ref{sec:robustness_noise}
 (Table~\ref{tab:noise_params}), where they are used.
+
+% \begin{figure}[t]
+%   \centering
+%   \includegraphics[width=\columnwidth]{assets/figures/fig3.pdf}
+%   \caption{Sensing-noise injection. Training uses the clean proxy
+%   $\phi(\mathbf{s}_t)$ ($\varepsilon=0$); only at evaluation are the five
+%   per-feature noise modes added as
+%   $\mathbf{o}_i = \phi(\mathbf{s}_t) + c\,\varepsilon$ and swept over
+%   $c \in \{0, 0.5, 1, 2\}\times$ to trace the degradation curve
+%   (Section~\ref{sec:robustness_noise}).}
+%   \label{fig:noise_model}
+%   \vspace{-4mm}
+% \end{figure}

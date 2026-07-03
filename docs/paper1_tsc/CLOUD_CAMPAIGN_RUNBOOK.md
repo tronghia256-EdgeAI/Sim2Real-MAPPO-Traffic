@@ -124,8 +124,12 @@ python experiment/runners/train_ppo.py --mode train --algo mappo --obs-mode prox
 ## PHASE G — Dựng bảng/figure (sau khi đủ data)
 
 ```bash
-# baselines (không cần training) — có thể chạy từ Day 2
-python experiment/baselines/webster.py  --network n3_grid --seed 42
+# FAIRNESS — calibrate Webster saturation flow to the MEASURED network value first.
+# Default sat_flow=1800 (car-lane chuẩn) > mạng moto thật (~1500 PCU/h) => Webster
+# under-time => biên MAPPO bị thổi phồng. Đo trên CHÍNH VM (SUMO 1.12, đồng bộ version):
+python experiment/calibration/measure_saturation_flow.py        # -> lấy PCU/h/lane đo được
+# baselines (không cần training) — có thể chạy từ Day 2; truyền --sat-flow = giá trị vừa đo:
+python experiment/baselines/webster.py  --network n3_grid --seed 42 --sat-flow <PCU/h_đo>
 python experiment/baselines/actuated.py --network n3_grid --seed 42
 
 # turnkey: eval → LaTeX tables → figures (tự tìm campaign mới nhất)
@@ -196,11 +200,11 @@ nhận lại số $/h GCP hiển thị khi tạo máy*. **Tiền = $/h × số g
 
 ## Định nghĩa "DONE" mỗi stage (tick khi đạt)
 
-- [ ] B: `git status` up-to-date với origin/master + sạch, `check_obs_match --sumo` PASS, pilot in PILOT SUMMARY
+- [X] B: `git status` up-to-date với origin/master + sạch, `check_obs_match --sumo` PASS, pilot in PILOT SUMMARY
 - [ ] C: `find results/paper1_mappo/main_05M -name bench.json | wc -l` = **30**
 - [ ] E: ablation_reward_05M = **18** bench.json, ablation_obs_05M = **9**
 - [ ] F: sublane_lanebased có best_model.pt + cross-eval table
-- [ ] G: `figures/tables/*.tex` sinh ra; FIG-3/4/5/6 có; Abstract X/Y/Z/W% điền được
+- [ ] G: Webster `--sat-flow` set theo measure trên VM (công bằng baseline); `figures/tables/*.tex` sinh ra; FIG-3/4/5/6 có; Abstract X/Y/Z/W% điền được
 - [ ] H: results/figures đã tải về local; **VM đã DELETE**; Budget alert đã đặt
 
 ## ⚠️ 4 quy tắc vàng

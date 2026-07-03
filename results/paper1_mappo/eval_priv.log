@@ -1,0 +1,98 @@
+nohup: ignoring input
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+Warning: Environment variable SUMO_HOME is not set properly, disabling XML validation. Set 'auto' or 'always' for web lookups.
+
+Scenario: n3_grid (eval) | 16 TLS | 5 seeds | methods: mappo
+
+--- mappo ---
+  5 checkpoint(s) x 5 eval seeds
+ Retrying in 1 seconds
+  mappo[0]     seed=42    | travel=  244.4s wait=  82.6s p95= 287.0s trips=14740
+ Retrying in 1 seconds
+  mappo[0]     seed=123   | travel=  266.6s wait= 102.6s p95= 401.0s trips=14721
+ Retrying in 1 seconds
+  mappo[0]     seed=456   | travel=  260.0s wait=  94.3s p95= 326.0s trips=14736
+ Retrying in 1 seconds
+  mappo[0]     seed=789   | travel=  301.7s wait= 132.5s p95= 558.4s trips=14713
+ Retrying in 1 seconds
+  mappo[0]     seed=1337  | travel=  253.6s wait=  90.8s p95= 305.0s trips=14723
+ Retrying in 1 seconds
+  mappo[1]     seed=42    | travel=  256.5s wait=  90.6s p95= 305.7s trips=14727
+ Retrying in 1 seconds
+  mappo[1]     seed=123   | travel=  277.2s wait= 103.0s p95= 382.0s trips=14712
+ Retrying in 1 seconds
+  mappo[1]     seed=456   | travel=  261.4s wait=  93.9s p95= 327.0s trips=14724
+ Retrying in 1 seconds
+  mappo[1]     seed=789   | travel=  259.9s wait=  94.5s p95= 336.0s trips=14737
+ Retrying in 1 seconds
+  mappo[1]     seed=1337  | travel=  249.5s wait=  84.3s p95= 285.0s trips=14715
+ Retrying in 1 seconds
+  mappo[2]     seed=42    | travel=  300.7s wait= 129.7s p95= 511.0s trips=14735
+ Retrying in 1 seconds
+  mappo[2]     seed=123   | travel=  357.2s wait= 164.0s p95= 603.0s trips=14719
+ Retrying in 1 seconds
+  mappo[2]     seed=456   | travel=  375.0s wait= 182.4s p95= 707.0s trips=14664
+ Retrying in 1 seconds
+  mappo[2]     seed=789   | travel=  298.7s wait= 126.1s p95= 499.0s trips=14734
+ Retrying in 1 seconds
+  mappo[2]     seed=1337  | travel=  298.8s wait= 125.7s p95= 508.3s trips=14714
+ Retrying in 1 seconds
+  mappo[3]     seed=42    | travel=  286.2s wait= 110.5s p95= 389.9s trips=14742
+ Retrying in 1 seconds
+  mappo[3]     seed=123   | travel=  274.9s wait= 100.9s p95= 350.0s trips=14716
+ Retrying in 1 seconds
+  mappo[3]     seed=456   | travel=  265.8s wait=  97.6s p95= 341.4s trips=14733
+ Retrying in 1 seconds
+  mappo[3]     seed=789   | travel=  266.2s wait=  99.0s p95= 356.0s trips=14736
+ Retrying in 1 seconds
+  mappo[3]     seed=1337  | travel=  260.1s wait=  95.8s p95= 323.0s trips=14724
+ Retrying in 1 seconds
+  mappo[4]     seed=42    | travel=  269.3s wait=  99.2s p95= 340.7s trips=14727
+ Retrying in 1 seconds
+  mappo[4]     seed=123   | travel=  264.9s wait=  96.9s p95= 341.0s trips=14719
+ Retrying in 1 seconds
+  mappo[4]     seed=456   | travel=  278.6s wait= 109.3s p95= 405.0s trips=14732
+ Retrying in 1 seconds
+  mappo[4]     seed=789   | travel=  288.2s wait= 114.8s p95= 426.0s trips=14738
+ Retrying in 1 seconds
+  mappo[4]     seed=1337  | travel=  276.4s wait= 102.4s p95= 355.0s trips=14714
+  (5211.9s)
+
+============================================
+  COMPARISON (mean ± 95% CI; reference = mappo; † p_holm<0.05 vs mappo)
+============================================
+  Metric                             mappo
+------------------------------------------
+  Travel time (s)               279.7±23.2
+  Waiting (s)                   108.9±18.3
+  Time loss (s)                 199.5±23.2
+  P95 waiting (s)               398.8±83.6
+  Served trips                 14723.8±5.7
+  CO2 (mg/ep)         7392762408.9±499178126.9
+  Fuel (mg/ep)        2391630895.8±161635374.7
+============================================
+
+[out] wrote /home/kimthanhle2404/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260702_074001/summary.json and /home/kimthanhle2404/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260702_074001/table.csv

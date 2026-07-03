@@ -18,6 +18,17 @@
 \else
 \fi
 
+% --- Headline result macros (fill once, after the campaign completes) -------
+% Single source of truth so the Abstract, Discussion (Sec.~VII) and Conclusion
+% (Sec.~VIII) can never disagree. Replace each bracketed placeholder with the
+% measured value; the percent sign stays in the surrounding text.
+\newcommand{\ImproveFixed}{[X]}        % travel-time reduction vs.\ fixed-time
+\newcommand{\ImproveMaxP}{[Y]}         % travel-time reduction vs.\ max-pressure
+\newcommand{\ImproveStrongest}{[Y']}   % reduction vs.\ strongest classical baseline
+\newcommand{\RetainPriv}{[Z]}          % percent of privileged performance retained
+\newcommand{\RestrictionCost}{[W]}     % information-restriction cost (proxy vs.\ priv.)
+% ---------------------------------------------------------------------------
+
 \title{Camera-Observable Multi-Agent Reinforcement Learning for Traffic Signal Control in Mixed Motorcycle-Dominant Traffic}
 
 \author{
@@ -68,7 +79,7 @@ traffic signal control, multi-agent reinforcement learning, deployability, mixed
 \input{sections/sec8_conclusion}
 
 % \appendices
-% \input{sections/sec9_appendices}\textbf{}
+% \input{sections/sec9_appendices}   % submitted as separate Supplementary Material
 
 \section*{Acknowledgment}
 The authors would like to thank the Institute of Intelligent and Interactive Technologies (3IT), University of Economics Ho Chi Minh City (UEH), for providing the computational resources and infrastructure that supported this research.
@@ -77,7 +88,6 @@ The authors would like to thank the Institute of Intelligent and Interactive Tec
   \newpage
 \fi
 
-\nocite{*}
 \bibliographystyle{IEEEtran}
 \bibliography{references} 
 

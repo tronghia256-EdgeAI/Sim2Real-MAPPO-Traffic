@@ -58,8 +58,11 @@ prior to training and held identical across all arms, with the SUMO-actuated con
 \begin{table}[t]
   \centering
   \caption{Maximum-green selection pilot (N3 grid, seed~$42$, $100$k steps, held-out
-  evaluation). Lower is better; the selected bound is in bold.}
+  evaluation). Lower is better; the selected bound is in bold. Evaluation is based on an early
+  $100$k-step convergence pilot used to structurally set the signal-timing constraints prior
+  to full training, not on the converged policy.}
   \label{tab:maxgreen_pilot}
+  \vspace{-4mm}
   \begin{tabular}{lccc}
     \toprule
     \textbf{Max-green} & \textbf{Travel time (s)} & \textbf{Waiting (s)} & \textbf{P95 waiting (s)}\\
@@ -75,41 +78,17 @@ prior to training and held identical across all arms, with the SUMO-actuated con
 \subsection{Networks and Demand}
 \label{sec:networks}
 The framework is evaluated on two synthetic but structurally sound topologies: a
-signalized corridor ($1 \times 5$ junctions) and an N3 signalized grid ($4 \times 4$
-junctions). All intersections are four-way with two lanes per approach. The two scales
+signalized corridor (denoted N2; $1 \times 5$ junctions) and a signalized grid
+(denoted N3; $4 \times 4$ junctions). All intersections are four-way with two lanes per approach. The two scales
 jointly probe both arterial coordination (the corridor) and network-level interaction under
 many simultaneously learning agents (the grid).
 
 To stress-test the controllers under non-stationary load rather than a single operating
-point, the demand follows a time-varying profile $\lambda(t)$ of duration $5400$~s. Vehicle
-insertions are drawn from an inhomogeneous Poisson process whose rate follows the
-trapezoidal function,
-\begin{equation}
-  \lambda(t) = \mathrm{PWL}\!\left(t;\, \mathbf{t}_k,\, \boldsymbol{\lambda}_k\right),
-  \label{eq:demand}
-\end{equation}
-linearly interpolated between the knot times
-$t_1=0$~s,
-$t_2=900$~s,
-$t_3=1500$~s,
-$t_4=3000$~s,
-$t_5=3600$~s,
-$t_6=4800$~s,
-and
-$t_7=5400$~s,
-with corresponding base rates
-$\lambda_1=0.4$,
-$\lambda_2=0.4$,
-$\lambda_3=1.67$,
-$\lambda_4=1.67$,
-$\lambda_5=0.83$,
-$\lambda_6=0.83$,
-and
-$\lambda_7=0.4$~veh/s,
-proportionally to the number of network entries. The profile thus advances from an off-peak
-lull, ramps to a sustained demand peak over $1500$--$3000$~s, eases to an
-intermediate plateau over $3600$--$4800$~s, and finally tapers back to off-peak, exercising the controllers
-across loading, saturation, and unloading regimes within a single episode.
+point, vehicle insertions over the $5400$~s episode are drawn from an inhomogeneous Poisson
+process following a time-varying trapezoidal profile. The profile ramps from an off-peak lull
+to a sustained demand peak, eases to an intermediate plateau, and tapers back, exercising the
+controllers across loading, saturation, and unloading regimes. The exact mathematical
+formulation and rate parameters are provided in Appendix~\ref{app:demand}.
 \begin{figure}[t]
     \centering
     \begin{subfigure}{\columnwidth}
@@ -127,6 +106,7 @@ across loading, saturation, and unloading regimes within a single episode.
     \end{subfigure}
     \caption{SUMO evaluation networks. All intersections are four-way with two lanes per approach; each intersection is controlled by one decentralized MAPPO agent.}
     \label{fig:networks}
+    \vspace{-4mm}
 \end{figure}
 \subsection{Baselines}
 \label{sec:baselines}
@@ -138,7 +118,10 @@ groups, decision interval, and timing constraints as the learned policy.
         plan computed from PCU-weighted measured flows, with cycle length
         $C = (1.5L + 5)/(1 - Y)$ clamped to $[40, 120]$~s and proportional green splits.
         This provides a competitive classical baseline rather than a degenerate fixed-time
-        plan.
+        plan. To ensure a strict and fair comparison, Webster's saturation flow is explicitly
+        calibrated to the network's measured mixed-traffic sublane capacity
+        ($\approx 1500$~PCU/h/lane), preventing artificial performance degradation that would
+        occur if standard car-only saturation flows were assumed.
   \item \emph{SUMO-actuated}: the gap-based actuation controller native to
         SUMO~\cite{lopez2018_sumo}, configured with \texttt{minDur}~$=15$~s and
         \texttt{maxDur}~$=60$~s to match the learned controllers exactly.
@@ -179,13 +162,12 @@ statistically significant but negligible differences.
 
 \subsection{Training Configuration and Reproducibility}
 \label{sec:training}
-Training uses the hyperparameters listed in Table~\ref{tab:hyperparams}, including a discount
-factor $\gamma = 0.99$, GAE parameter $\lambda = 0.95$~\cite{schulman2016_gae}, a PPO clip
-ratio of $0.2$~\cite{schulman2017_ppo}, and a learning rate of $3 \times 10^{-4}$ with linear
-decay. Each model is trained to a fixed budget of $5 \times 10^{5}$ environment steps, a
+Each model is trained to a fixed budget of $5 \times 10^{5}$ environment steps, a
 horizon established by convergence pilots. Observation statistics are normalized by
 Welford's algorithm~\cite{welford1962} and serialized into the checkpoint, so that
-evaluation and deployment apply identical normalization without recompilation.
+evaluation and deployment apply identical normalization without recompilation. The complete
+set of MAPPO training hyperparameters---including PPO clip ratios, GAE discount factors, and
+learning rates---is detailed in Appendix~\ref{app:hyperparams}.
 
 To guarantee end-to-end reproducibility, the full codebase, trained checkpoints,
 demand generators (\texttt{.rou.xml}), phase-group derivations, and evaluation scripts are
@@ -193,23 +175,4 @@ released publicly at \mbox{[REPOSITORY~URL]} under a tagged commit. The precise 
 and reward schema version is stamped into every run configuration, ensuring that all
 results are traceable to an exact environment specification.
 
-\begin{table}[t]
-\centering
-\caption{MAPPO training hyperparameters.}
-\label{tab:hyperparams}
-\begin{tabular}{lc}
-\toprule
-\textbf{Hyperparameter} & \textbf{Value} \\
-\midrule
-Discount factor ($\gamma$)      & $0.99$ \\
-GAE parameter ($\lambda$)       & $0.95$ \\
-PPO clip ratio ($\epsilon$)     & $0.2$ \\
-Target KL divergence            & $0.015$ \\
-Learning rate                   & $3 \times 10^{-4}$ (linear decay) \\
-Rollout horizon                 & $128$ steps \\
-Minibatch size                  & $256$ \\
-Optimization epochs             & $10$ \\
-Total environment steps         & $5 \times 10^{5}$ \\
-\bottomrule
-\end{tabular}
-\end{table}
+% [Hyperparameter table relocated to Appendix~\ref{app:hyperparams} (sec9_appendices.tex)]

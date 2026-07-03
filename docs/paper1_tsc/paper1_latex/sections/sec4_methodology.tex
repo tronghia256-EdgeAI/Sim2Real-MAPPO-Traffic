@@ -6,7 +6,7 @@ A central contribution of this work is the formulation of a reward function that
 strictly computable from camera-derived proxies, ensuring that the objective optimized
 during simulation coincides with the metric available at deployment. The governing design
 rule is that every reward term $r^{(k)}_i(t)$ factors through the vision-proxy projection
-$\phi(\mathbf{s}_t)$ introduced in Section~III-B. Unlike prior vision-based reinforcement
+$\phi(\mathbf{s}_t)$ introduced in Section~\ref{sec:projection}. Unlike prior vision-based reinforcement
 learning, which pairs a camera-constrained state with a privileged simulator reward
 (typically the exact accumulated delay), no term in the proposed reward reads a privileged
 quantity---the accumulated-delay penalty included, which is realized through a
@@ -41,7 +41,7 @@ To ensure stable temporal-difference learning, the final scalar is clipped to
 $[-2.0,\, +1.5]$. The individual components are detailed below.
 
 We emphasize that these six terms are \emph{not} six orthogonal objectives. Four of them are
-monotone functions of a single congestion signal---the per-approach halted-queue fraction $q_l$
+monotone functions of a single congestion signal---the per-lane halted-queue fraction $q_l$
 (\texttt{effective\_queue\_norm}). The queue penalty applies its $L_2$ norm
 ($\frac{1}{n_i}\sum_l q_l^2$, the Jensen anti-starvation form derived below), whereas the
 accumulated-delay penalty $\bar{w}(t)$ applies the $L_1$ norm of the \emph{same} vector
@@ -96,9 +96,9 @@ $\tfrac{1}{2}\bigl(1 + \bar{q}_A - \bar{q}_B\bigr)$ over the fixed groups $A, B$
 bridged exactly by the phase one-hot vector: since the one-hot identifies which fixed group
 currently holds green, and $\mathrm{pressure\_norm}$ supplies $\bar{q}_A - \bar{q}_B = 2\,
 \mathrm{pressure\_norm} - 1$, the signal-relative reward pressure is an affine, phase-determined
-transform of these two observed quantities (exact up to the equal-group-size scaling of the
-symmetric two-phase plans used here and the boundary saturation). The actor's observation
-therefore contains all information that its pressure reward optimizes.
+transform of these two observed quantities (exact up to the per-lane-to-approach aggregation, the equal-group-size scaling of the
+symmetric two-phase plans used here, and the boundary saturation). The actor's observation
+therefore contains the approach-aggregated information that its pressure reward optimizes.
 
 \paragraph{Local ROI-exit throughput}
 The agent is rewarded for vehicles actively clearing the intersection. The throughput term
@@ -141,12 +141,13 @@ mapped to discrete phase actions by the parameter-shared actor $\pi_\theta$. Das
 denote the training-only centralized multi-head critic and the per-agent GAE
 estimator, neither of which is deployed.}
 \label{fig:architecture}
+\vspace{-4mm}
 \end{figure*}
 
 To optimize the multi-agent control policy, Multi-Agent Proximal Policy Optimization
 (MAPPO)~\cite{yu2022_mappo} is adopted---a standard instance of the Centralized Training
 with Decentralized Execution (CTDE) paradigm for the Dec-POMDP~\cite{oliehoek2016_decpomdp}
-formalized in Section~III. It is emphasized that the reinforcement-learning architecture
+formalized in Section~\ref{sec:problem}. It is emphasized that the reinforcement-learning architecture
 itself is standard and is not claimed as a methodological contribution; rather, it serves
 as the vehicle through which the proposed camera-constrained state and vision-proxy reward
 are evaluated.
@@ -165,87 +166,11 @@ approaches, matching the deployment camera's field of view---so no inter-agent t
 the reward itself. Cross-intersection credit assignment enters only via the concatenated global
 state ingested by the critic during centralized training and is absent at decentralized
 execution, consistent both with the CTDE paradigm and with the camera-only constraint on the
-deployed actor. Advantages $\hat{A}_{i,t}$ are computed by per-agent
-Generalized Advantage Estimation (GAE)~\cite{schulman2016_gae} on the decentralized reward
-streams $r_{i,t}$ and are subsequently standardized jointly across all agents within the
-batch to stabilize the policy update:
-\begin{equation}
-\begin{aligned}
-\hat{A}_{i,t}
-&=
-\sum_{l=0}^{\infty}
-(\gamma\lambda)^l\,\delta_{i,t+l},
-\\
-\delta_{i,t}
-&=
-r_{i,t}
-+\gamma V_\psi(\mathbf{s}_{t+1})_i
--
-V_\psi(\mathbf{s}_t)_i .
-\end{aligned}
-\label{eq:gae}
-\end{equation}
-The policy is updated with the PPO clipped surrogate objective~\cite{schulman2017_ppo},
-\begin{equation}
-\begin{aligned}
-L^{\text{clip}}(\theta)
-=
-\mathbb{E}
-\Big[
-\min \Big(
-\rho_{i,t}\hat{A}_{i,t},
-\;
-&
-\\
-\mathrm{clip}
-(
-\rho_{i,t},
-1-\epsilon,
-1+\epsilon
-)
-\hat{A}_{i,t}
-&
-\Big)
-\Big].
-\end{aligned}
-\label{eq:ppoclip}
-\end{equation}
-where $\rho_{i,t} = \pi_\theta(a_{i,t}|\mathbf{o}_{i,t}) / \pi_{\theta_{\text{old}}}(a_{i,t}|\mathbf{o}_{i,t})$
-is the importance ratio and $\epsilon = 0.2$. The critic is trained with a clipped,
-per-head value loss,
-\begin{equation}
-\begin{aligned}
-L^{\text{VF}}(\psi)
-=
-\frac{1}{N}
-\sum_{i=1}^{N}
-\mathbb{E}
-\Big[
-\max
-\Big(
-&
-\\
-\big(
-V_\psi(\mathbf{s}_t)_i
--
-\hat{R}_{i,t}
-\big)^2,
-&
-\\
-\big(
-V^{\text{clip}}_{\psi}
-(\mathbf{s}_t)_i
--
-\hat{R}_{i,t}
-\big)^2
-&
-\Big)
-\Big].
-\end{aligned}
-\label{eq:valueloss}
-\end{equation}
-with early stopping triggered whenever the approximate KL divergence between successive
-policies exceeds $1.5\times$ the target KL of $0.015$ (i.e., $0.0225$). The complete training loop is summarized in Algorithm~\ref{alg:mappo}.
+deployed actor. Advantages $\hat{A}_{i,t}$ are computed via per-agent Generalized Advantage Estimation
+(GAE)~\cite{schulman2016_gae} on the decentralized reward streams and standardized across all
+agents within the batch. The actor and critic are then optimized using the standard PPO clipped
+surrogate objective and a clipped multi-head value loss, respectively~\cite{schulman2017_ppo},
+with early stopping triggered if the approximate KL divergence exceeds $1.5\times$ the target.
 
 To bridge the residual normalization gap between training and deployment, the observation
 running mean and variance are tracked online by Welford's algorithm~\cite{welford1962} and
@@ -253,35 +178,5 @@ serialized directly into the deployment checkpoint alongside the actor weights. 
 inputs $\mathbf{o}_{i,t}$ are therefore normalized with statistics identical to those seen
 during training, without any dependence on live estimation.
 
-\begin{algorithm}[!t]
-\caption{MAPPO with Per-Agent GAE for Traffic Signal Control}
-\label{alg:mappo}
-\begin{algorithmic}[1]
-\STATE Initialize parameters $\theta, \psi$
-\STATE Initialize Welford observation running mean/variance statistics
-\FOR{iteration $= 1, 2, \ldots, \text{max\_iterations}$}
-    \STATE Reset environments and obtain initial observations
-    \FOR{step $t = 1$ to $128$}
-        \STATE Normalize local observations $\mathbf{o}_{i,t}$ with running statistics
-        \STATE Sample actions $a_{i,t} \sim \pi_\theta(\cdot\,|\,\mathbf{o}_{i,t})$ for each agent $i$
-        \STATE Execute joint action $\mathbf{a}_t$; the environment applies the $3$\,s yellow and the min/max-green constraints
-        \STATE Observe rewards $r_{i,t}$ and next observations $\mathbf{o}_{i,t+1}$
-        \STATE Store transitions in per-agent buffers
-    \ENDFOR
-    \STATE Update Welford running statistics with the collected batch
-    \FOR{each agent $i$}
-        \STATE Compute GAE advantages $\hat{A}_{i,t}$
-    \ENDFOR
-    \STATE Standardize advantages $\hat{A}_{i,t}$ jointly across all agents
-    \FOR{epoch $= 1$ to $10$}
-        \STATE Compute clipped surrogate loss $L^{\text{clip}}(\theta)$ across all agents
-        \STATE Compute multi-head value loss $L^{\text{VF}}(\psi)$
-        \STATE Update $\theta, \psi$ with the Adam optimizer
-        \IF{approximate KL divergence $> 1.5 \times 0.015$}
-            \STATE Break (early stop)
-        \ENDIF
-    \ENDFOR
-\ENDFOR
-\STATE Serialize $\pi_\theta$ and the observation normalization statistics for deployment
-\end{algorithmic}
-\end{algorithm}
+% [MAPPO training-loop pseudocode removed for length: the standard MAPPO loop with
+%  per-agent GAE, a parameter-shared actor, and a centralized multi-head critic.]

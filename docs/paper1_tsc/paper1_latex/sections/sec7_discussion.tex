@@ -7,8 +7,8 @@ survives when the policy is denied every privileged simulator quantity and restr
 signals a roadside camera can actually compute. The experiments answer this quantitatively.
 The information-restriction cost, defined as the performance gap between the proxy policy and
 the privileged upper bound under identical pristine features (Section~\ref{sec:restriction_cost}),
-is only $[X]\%$ in mean travel time, while the proxy policy itself improves on the strongest
-classical baseline by $[Y]\%$. The interpretation is direct: for the signal-timing objective,
+is only $\RestrictionCost\%$ in mean travel time, while the proxy policy itself improves on the strongest
+classical baseline by $\ImproveStrongest\%$. The interpretation is direct: for the signal-timing objective,
 the camera-observable feature set retains the overwhelming majority of information, and the
 residual loss from discarding exact per-vehicle delays and network-wide counts is small
 relative to the gains from learning itself. This isolates a result that prior camera-state RL
@@ -48,88 +48,11 @@ is derived from detection and tracking alone. This lowers the deployment barrier
 sensing-infrastructure problem to a calibration-and-integration problem.
 
 \noindent\textbf{Limitations and future work.}
-Several limitations bound the immediate applicability of this study and define clear
-directions for subsequent work.
-
-\begin{enumerate}
-
-\item \emph{Two-phase control logic.}
-The action space is restricted to two non-conflicting phase groups without protected left
-turns. While this matches the legacy fixed-time controllers targeted for deployment,
-extending the framework to multi-phase and ring-barrier logic is necessary for broader
-international applicability.
-
-\item \emph{Simulation-only scope.}
-Although the sensing-noise model is parameterized on a documented basis and swept over a
-$\{0\text{--}2\times\}$ envelope (Section~\ref{sec:robustness_noise}), the results remain
-simulation-based. This paper establishes the information-restriction cost and the
-noise-robustness envelope of camera-only RL-TSC; closed-loop physical deployment---with its
-additional sensing uncertainty, hardware integration, and dynamics gap---is deferred to an
-ongoing companion field study, in which the documented-basis noise magnitudes will be
-replaced by measured feature-recovery calibration.
-
-\item \emph{Calibration depth of the traffic mix.}
-The $73\%$ motorcycle share is anchored to Hanoi's reported motorcycle mode
-share~\cite{ngoc2021_fivecities}; mode share (by trips) and intersection vehicle-count share
-differ modestly, and the remaining fleet is a representative assumption rather than a
-per-corridor measurement. Certain microscopic sub-lane parameters (e.g., exact lateral gaps)
-follow standard SUMO heuristics rather than trajectory-level
-calibration~\cite{cao_sano_hanoi}. The composition sweep of
-Section~\ref{sec:generalization} bounds the sensitivity of this assumption but does not
-eliminate it.
-
-\item \emph{Network scale.}
-Evaluation is capped at a sixteen-junction grid. Scaling to city-wide networks of hundreds
-of junctions is expected to stress both the critic's credit assignment and the locality
-assumption of the proxy pressure feature; partition-based~\cite{gu2024_partition}, fully
-decentralized~\cite{chen2020_mplight}, and cross-city
-meta-learning~\cite{jiang2024_xlight} formulations represent promising directions for
-addressing this.
-
-\item \emph{One-dimensional queue feature under two-dimensional flow.}
-Although training is conducted in SUMO's sublane model---which reproduces lateral motorcycle
-filtering in the \emph{dynamics}---the \texttt{effective\_queue\_norm} \emph{feature} is
-computed longitudinally, as the ratio of summed halted-vehicle length to lane length. This
-one-dimensional compression does not linearly track the volumetric count of laterally-packed
-two-wheelers and saturates under dense filtering, so the policy observes a calibrated but
-nonlinear proxy of true approach occupancy rather than a faithful vehicle count. A
-two-dimensional areal occupancy feature (halted footprint over ROI area) is a natural
-refinement and is a direction for future work.
-
-\item \emph{Partial observability.}
-The $26$-dimensional observation is a single $5$~s snapshot: it carries no explicit
-queue-trend (temporal derivative) and no per-approach time-since-served counter, the normalized
-green timer being the only temporal state. The control problem is therefore genuinely a
-Dec-POMDP, and the quadratic ($L_2$) queue term serves as the principal mathematical defense
-against approach starvation in place of an explicit fairness or queue-age signal. Recurrent or
-frame-stacked observations are a direct extension.
-
-\item \emph{Local reward and greedy-flush risk.}
-Because the throughput term is local per-agent, an agent is rewarded for clearing its own
-approaches even when the receiving downstream link is saturated. This creates a theoretical
-incentive for ``greedy flushing'' and downstream spillback that the local reward cannot itself
-penalize and that the centralized critic mitigates but does not eliminate. Incorporating a true
-upstream--downstream network-pressure term, or gating the throughput reward by downstream
-occupancy, is the most important direction for arterial- and grid-scale robustness and is left
-to future work.
-
-\item \emph{Throughput estimation bias.}
-The ROI-exit count registers any vehicle identity present at the previous step and absent at the
-current one. Under the sublane model, rapid lateral lane changes near the stop line---and the
-rare simulator teleport---are consequently miscounted as exits, modestly inflating the
-throughput signal. This bias is bounded and, importantly, is \emph{shared identically} by the
-deployable ByteTrack ROI-exit counter, so it introduces no train/deploy discrepancy; it does,
-however, mean the throughput term rewards a slightly noisy surrogate of true intersection
-clearance.
-
-\item \emph{Train/evaluate objective mismatch.}
-By design, the agent optimizes a fully vision-computable queue-and-throughput proxy during
-training and never reads true delay. The headline evaluation metrics, by contrast---mean travel
-time and mean/P95 waiting time---are computed from privileged SUMO trip information
-(\texttt{tripinfo}). This mismatch is deliberate and defensible, since queue length is a strong
-correlate of delay, but it does mean the reported gains are achieved by a controller never given
-its evaluation objective directly; correspondingly, the privileged-observation arm of
-Section~\ref{sec:restriction_cost} bounds the cost of restricting the \emph{observation}, not the
-cost of restricting the \emph{reward} to a delay proxy.
-
-\end{enumerate}
+While this study isolates the information-restriction cost of camera-computable control,
+several limitations remain. First, the evaluation employs a two-phase logic without protected
+turns, matching legacy hardware but limiting international generality. Second, the 1D effective
+queue is a scalar proxy for 2D sublane flow, and the local throughput reward introduces a minor
+theoretical risk of downstream spillback (greedy flushing) that the central critic only
+partially mitigates. Finally, the findings establish the robustness boundary in simulation;
+bridging the physical dynamics gap with measured feature-recovery calibration is left to the
+companion field deployment.

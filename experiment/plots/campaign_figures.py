@@ -255,37 +255,36 @@ def fig_losses(campaign_dir: Path, arm: str = "mappo_proxy") -> None:
         print(f"[fig] losses: no train_updates.csv for {arm} — skip")
         return
 
-    fig, axes = plt.subplots(1, 3, figsize=(PAGE_W, 2.6), gridspec_kw={"wspace": 0.4})
-    specs = [("policy_loss", "Policy loss", False),
-             ("value_loss", "Value loss", True),
-             ("entropy", "Entropy / KL", False)]
-    for ax, (key, label, logy) in zip(axes, specs):
+    # Clean 2x2 grid: one metric per panel, single blue mean line + std band.
+    # (Previous layout overlaid approx-KL on the entropy panel via a twinx orange
+    # axis — visually cluttered; KL now gets its own panel with the target line.)
+    fig, axes = plt.subplots(2, 2, figsize=(PAGE_W, 4.6), constrained_layout=True)
+    specs = [("policy_loss", "Policy loss", False, None),
+             ("value_loss", "Value loss", True, None),
+             ("entropy", "Entropy", False, None),
+             ("approx_kl", "Approx KL", False, 0.015)]
+    for ax, (key, label, logy, hline) in zip(axes.flat, specs):
         band = _multiseed_band(upd_jobs, "train_updates.csv", "global_step", key, smooth_w=50)
         if band is None:
+            ax.set_visible(False)
             continue
         grid, mean, std = band
-        ax.plot(grid / 1e3, mean, color="#1565c0")
+        ax.plot(grid / 1e3, mean, color="#1565c0", linewidth=1.3)
         ax.fill_between(grid / 1e3, mean - std, mean + std, color="#90caf9", alpha=0.3, linewidth=0)
+        if hline is not None:
+            ax.axhline(hline, color="#c62828", linestyle="--", linewidth=0.9,
+                       label=f"target {hline}")
+            ax.legend(loc="upper right", fontsize=7, frameon=False)
         if logy:
             ax.set_yscale("log")
         ax.set_xlabel("Global step (×10³)")
         ax.set_ylabel(label)
         ax.set_title(label)
-        ax.grid(True)
-        if key == "entropy":
-            kl = _multiseed_band(upd_jobs, "train_updates.csv", "global_step", "approx_kl", smooth_w=50)
-            if kl is not None:
-                axk = ax.twinx()
-                axk.plot(kl[0] / 1e3, kl[1], color="#e65100", linestyle="--")
-                axk.axhline(0.015, color="#e65100", linestyle=":", linewidth=0.8)
-                axk.set_ylabel("Approx KL", color="#e65100")
+        ax.grid(True, alpha=0.3)
     fig.suptitle(f"Training diagnostics ({arm}, mean over {len(upd_jobs)} seeds)",
-                 fontsize=11, y=0.99)
-    # reserve headroom for the suptitle (subplots_adjust, not tight_layout, since
-    # the entropy panel's twinx KL axis is incompatible with tight_layout)
-    fig.subplots_adjust(top=0.86, wspace=0.4)
+                 fontsize=10)
     out = OUT_DIR / "training_losses.pdf"
-    fig.savefig(out, bbox_inches="tight", dpi=300)
+    fig.savefig(out, dpi=300)
     plt.close(fig)
     print(f"[fig] saved {out}")
 
@@ -302,6 +301,29 @@ def _load_summaries() -> List[dict]:
     return [json.loads(p.read_text(encoding="utf-8")) for p in by_net.values()]
 
 
+# Per-method palette (consistent across panels). Baselines muted greys/earth
+# tones; the RL methods get saturated colours so "ours" reads at a glance.
+METHOD_STYLE = {
+    "fixed":       ("#bdbdbd", "Fixed-Time"),
+    "webster":     ("#9e9e9e", "Webster"),
+    "actuated":    ("#78909c", "Actuated"),
+    "sotl":        ("#a1887f", "SOTL"),
+    "maxpressure": ("#4db6ac", "MaxPressure"),
+    "ippo":        ("#e65100", "IPPO"),
+    "privileged":  ("#6a1b9a", "MAPPO-priv"),
+    "mappo":       ("#1565c0", "MAPPO (ours)"),
+}
+# canonical left-to-right ordering (baselines first, ours last so it stands out)
+METHOD_ORDER = ["fixed", "webster", "actuated", "sotl", "maxpressure",
+                "ippo", "privileged", "mappo"]
+
+
+def _ordered_methods(aggregates) -> list:
+    present = [m for m in METHOD_ORDER if m in aggregates]
+    present += [m for m in aggregates if m not in present]  # unknowns appended
+    return present
+
+
 def fig_comparison() -> None:
     plt = _setup_mpl()
     summaries = _load_summaries()
@@ -311,24 +333,44 @@ def fig_comparison() -> None:
     for summary in summaries:
         scen = summary.get("scenario", "scenario")
         aggregates = summary["aggregates"]
-        methods = list(aggregates)
-        # show the 4 delay metrics (skip n_trips: different units)
+        methods = _ordered_methods(aggregates)
         metrics = [m for m in METRIC_KEYS if m != "n_trips"]
-        fig, ax = plt.subplots(figsize=(PAGE_W, 3.0))
-        x = np.arange(len(metrics))
-        w = 0.8 / max(len(methods), 1)
-        for i, method in enumerate(methods):
-            means = [aggregates[method].get(m, {}).get("mean", np.nan) for m in metrics]
-            cis = [aggregates[method].get(m, {}).get("ci95", 0.0) for m in metrics]
-            ax.bar(x + i * w, means, w, yerr=cis, capsize=2, label=method)
-        ax.set_xticks(x + 0.4 - w / 2)
-        ax.set_xticklabels([METRIC_LABELS[m] for m in metrics])
-        ax.set_ylabel("seconds (lower is better)")
-        ax.set_title(f"Controller comparison — {scen}")
-        ax.legend(ncol=2, fontsize=6)
-        ax.grid(True, axis="y")
+
+        # one panel per metric → each gets its own y-scale so P95 (~500-800s)
+        # no longer squashes Waiting (~140s).
+        fig, axes = plt.subplots(1, len(metrics), figsize=(PAGE_W, 2.7))
+        x = np.arange(len(methods))
+        handles: dict = {}
+        for ax, m in zip(axes, metrics):
+            means = [aggregates[mm].get(m, {}).get("mean", np.nan) for mm in methods]
+            cis = [aggregates[mm].get(m, {}).get("ci95", 0.0) for mm in methods]
+            best = int(np.nanargmin(means)) if np.any(np.isfinite(means)) else -1
+            for i, mm in enumerate(methods):
+                color, label = METHOD_STYLE.get(mm, ("#607d8b", mm))
+                is_ours = mm in ("mappo", "privileged")
+                bar = ax.bar(
+                    x[i], means[i], 0.78, yerr=cis[i], capsize=2,
+                    color=color, edgecolor="black",
+                    linewidth=1.1 if is_ours else 0.4,
+                    error_kw={"elinewidth": 0.7, "capthick": 0.7},
+                )
+                handles.setdefault(label, bar)
+                if i == best:  # mark the winner per metric
+                    ax.plot(x[i], means[i] + cis[i], marker="v", ms=4,
+                            color="#2e7d32", clip_on=False)
+            ax.set_title(METRIC_LABELS[m])
+            ax.set_xticks([])
+            ax.grid(True, axis="y")
+            ax.margins(y=0.15)
+        axes[0].set_ylabel("seconds (lower is better)")
+        fig.legend(handles.values(), handles.keys(), loc="lower center",
+                   ncol=len(handles), fontsize=6.5, frameon=False,
+                   bbox_to_anchor=(0.5, -0.02))
+        fig.suptitle(f"Controller comparison — {scen}  (▼ = best, 95% CI)",
+                     fontsize=9)
+        fig.tight_layout(rect=(0, 0.06, 1, 0.94))
         out = OUT_DIR / f"comparison_{scen}.pdf"
-        fig.savefig(out, bbox_inches="tight", dpi=300)
+        fig.savefig(out, dpi=300)
         plt.close(fig)
         print(f"[fig] saved {out}")
 

@@ -1,0 +1,43 @@
+\section{Hyperparameters and Network Details}
+\label{app:hyperparams}
+Table~\ref{tab:hyperparams} lists the complete MAPPO training hyperparameters used for every
+learned arm. The IPPO baseline and the privileged upper bound share this identical schedule,
+differing only in the critic structure (independent per-agent critics) and the observation
+dimension (an augmented $38$-dimensional state), respectively.
+
+\begin{table}[h]
+\centering
+\caption{MAPPO training hyperparameters.}
+\label{tab:hyperparams}
+\begin{tabular}{lc}
+\toprule
+\textbf{Hyperparameter} & \textbf{Value} \\
+\midrule
+Discount factor ($\gamma$)      & $0.99$ \\
+GAE parameter ($\lambda$)       & $0.95$ \\
+PPO clip ratio ($\epsilon$)     & $0.2$ \\
+Target KL divergence            & $0.015$ \\
+Learning rate                   & $3 \times 10^{-4}$ (linear decay) \\
+Rollout horizon                 & $128$ steps \\
+Minibatch size                  & $256$ \\
+Optimization epochs             & $10$ \\
+Total environment steps         & $5 \times 10^{5}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Time-Varying Demand Profile}
+\label{app:demand}
+The per-episode demand follows a time-varying rate $\lambda(t)$ of duration $5400$~s, realized
+as an inhomogeneous Poisson process whose rate is the piecewise-linear (trapezoidal) function
+\begin{equation}
+  \lambda(t) = \mathrm{PWL}\!\left(t;\, \mathbf{t}_k,\, \boldsymbol{\lambda}_k\right),
+  \label{eq:demand}
+\end{equation}
+linearly interpolated between the knot times $t_1=0$, $t_2=900$, $t_3=1500$, $t_4=3000$,
+$t_5=3600$, $t_6=4800$, and $t_7=5400$~s, with corresponding base rates $\lambda_1=0.4$,
+$\lambda_2=0.4$, $\lambda_3=1.67$, $\lambda_4=1.67$, $\lambda_5=0.83$, $\lambda_6=0.83$, and
+$\lambda_7=0.4$~veh/s, scaled proportionally to the number of network entries. The profile thus
+advances from an off-peak lull, ramps to a sustained demand peak over $1500$--$3000$~s, eases to
+an intermediate plateau over $3600$--$4800$~s, and finally tapers back to off-peak, exercising
+the controllers across loading, saturation, and unloading regimes within a single episode.
