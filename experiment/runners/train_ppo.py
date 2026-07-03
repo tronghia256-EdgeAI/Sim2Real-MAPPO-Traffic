@@ -1416,7 +1416,28 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--debug", action="store_true")
     parser.add_argument("--tls-ids", nargs="*", default=[])
 
-    return parser.parse_args()
+    args = parser.parse_args()
+    _auto_enable_n2_coordination(args)
+    return args
+
+
+def _auto_enable_n2_coordination(args: argparse.Namespace) -> None:
+    """Corridor networks need the green-wave coordination signal that local
+    obs + local reward lack (myopic agents break the platoon chain and lose
+    to Max-Pressure). Force both coordination flags whenever the target
+    network is n2_corridor. Applies to eval modes too: an n2 checkpoint
+    trained with --upstream-phase-obs has a wider obs vector, so the eval
+    env must be built with the flag or actor.load_state_dict fails
+    (shared_reward is only read during GAE, harmless at eval)."""
+    paths = (
+        getattr(args, "sumo_cfg", None) or "",
+        getattr(args, "lane_groups", None) or "",
+    )
+    if any("n2_corridor" in p for p in paths):
+        args.upstream_phase_obs = True
+        args.shared_reward = True
+        print("[INFO] N2 Corridor detected: Auto-enabling --upstream-phase-obs "
+              "and --shared-reward for green-wave coordination.")
 
 
 def main() -> None:
