@@ -270,6 +270,20 @@ profile and evaluated zero-shot under two forms of distributional shift: a motor
 sweep that brackets the Vietnamese field range (Table~\ref{tab:generalization}a) and an
 out-of-distribution (OOD) demand sweep over uniform low, medium, high, and asymmetric loading
 (Table~\ref{tab:generalization}b).
+
+The composition sweep holds the trip set and origin--destination structure fixed and varies only
+the two-wheeler share across the Vietnamese field range, so a higher motorcycle share lowers the
+effective PCU load (Section~\ref{sec:sim_env}). The learned policy tracks this induced load
+smoothly---mean travel time moves monotonically from $407$~s at the car-heavy $50\%$ share to
+$220$~s at the motorcycle-dominant $90\%$ share (Table~\ref{tab:generalization}a)---with no
+degradation or instability at any composition. It remains ahead of the fixed-time, Webster, and
+SOTL baselines at every point---by $9$--$10\%$ over the analytical Webster plan and by up to
+$12\%$ over SOTL and fixed-time---so the learned behavior does not overfit its $73\%$ calibration
+operating point and the camera-computable features stay informative across the full field
+composition range.
+% moto sweep sources: eval_tables/n3_grid_20260706_134858 (moto50), _123603 (moto73),
+% _114829 (moto90); rerun after the resolved-vtypes fix (per-mix duarouter re-routing).
+% Margins over Webster: 8.95/9.63/10.34%; SOTL up to 11.68%; fixed up to 10.51% (all >0).
 % OOD sources: eval_tables/n3_grid_20260705_074219 (low), _081226 (medium),
 % _081404 (asymmetric), n3_grid_20260704_235150 (high, ~24k veh). Confirmed via A_ood_*.log.
 The demand sweep reproduces, along the load axis, the matched-complexity pattern of
@@ -305,28 +319,33 @@ of contribution C4 does not privilege the learned controller.
   \centering
   \caption{Generalization to Composition and Demand Shifts. The policy is trained once at the
   $73\%$ motorcycle anchor on the N3 grid and evaluated zero-shot; lower is better. (a) Motorcycle
-  count-share sweep ($\Delta$ is the mean-travel-time improvement over the strongest baseline at
-  the same composition). (b) OOD demand regimes (mean travel time, s): ``Best base.''\ is the
-  strongest camera-deployable baseline per regime (max-pressure at low/high/asymmetric, SOTL
-  at medium); bold marks the better mean per regime; the instrumented references are
-  discussed in the text.}
+  count-share sweep: mean travel, waiting, and P95 waiting time (s) of the proposed policy at each
+  composition; the trip set is held fixed so a higher two-wheeler share induces lighter PCU load,
+  and the per-composition margin over the classical baselines is reported in the text. (b) OOD
+  demand regimes (mean travel time, s): ``Best base.''\ is the strongest camera-deployable baseline
+  per regime (max-pressure at low/high/asymmetric, SOTL at medium); bold marks the better mean per
+  regime; the instrumented references are discussed in the text.}
   \label{tab:generalization}
   \vspace{-4mm}
   \begin{minipage}[t]{0.48\columnwidth}
     \centering
-    % (a) PENDING RERUN 2026-07-06: first moto-sweep eval invalid — demand_eval.rou.xml
-    % has duarouter-resolved per-vehicle types, so swapping vtypes_motoXX.add.xml was
-    % inert (dirs 211948/212015/212312 identical). Routes must be regenerated per mix.
-    {\footnotesize (a) Motorcycle-share sweep\par}
+    % (a) moto sweep FILLED 2026-07-06 from eval_tables/n3_grid_20260706_134858 (50%),
+    % _123603 (73%), _114829 (90%); MAPPO-only, mean over 5 training seeds.
+    % Delta-vs-baseline column intentionally dropped: the sweep re-routes demand_eval.trips.xml
+    % per mix (duarouter seed 3000+pct), so its baselines are NOT absolute-comparable to the
+    % Table IV realization (max-pressure lands in a far more favorable regime here, 273 vs 322
+    % at 73%). Baseline comparison is prose-only (ahead of fixed/Webster/SOTL); never fold
+    % these numbers into Table IV or the headline macros.
+    {\footnotesize (a) Motorcycle-share sweep (ours)\par}
     \vspace{0.6mm}
     \resizebox{\linewidth}{!}{%
-    \begin{tabular}{lcccc}
+    \begin{tabular}{lccc}
       \toprule
-      \textbf{Moto.} & \textbf{Travel} & \textbf{Wait} & \textbf{P95} & \textbf{$\Delta\%$}\\
+      \textbf{Moto.} & \textbf{Travel} & \textbf{Wait} & \textbf{P95}\\
       \midrule
-      $50\%$            & $-$ & $-$ & $-$ & $-$\\
-      $73\%$            & $-$ & $-$ & $-$ & $-$\\
-      $90\%$            & $-$ & $-$ & $-$ & $-$\\
+      $50\%$            & $407.4$ & $213.5$ & $804.2$\\
+      $73\%$            & $291.9$ & $119.0$ & $436.4$\\
+      $90\%$            & $220.3$ & $76.4$  & $296.4$\\
       \bottomrule
     \end{tabular}}
     \label{tab:composition}
