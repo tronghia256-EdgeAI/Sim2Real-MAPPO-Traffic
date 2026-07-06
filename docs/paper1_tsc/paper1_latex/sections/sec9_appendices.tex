@@ -40,6 +40,34 @@ Total environment steps         & $3 \times 10^{5}$ \\
 \end{tabular}
 \end{table}
 
+\section{Maximum-Green Selection Pilot}
+\label{app:maxgreen}
+Table~\ref{tab:maxgreen_pilot} reports the simulation-based design-selection pilot
+(Section~V-A of the main paper) that fixes the maximum green time at $60$~s: on the N3
+grid (seed~$42$, $100$k training steps, held-out demand) the $60$~s bound dominates a
+relaxed $90$~s bound across all primary metrics, with the largest margin on the
+$95$th-percentile waiting time, because excessively long green phases starve cross-phase
+movements.
+
+\begin{table}[h]
+  \centering
+  \caption{Maximum-green selection pilot (N3 grid, seed~$42$, $100$k steps, held-out
+  evaluation). Lower is better; the selected bound is in bold. Evaluation is based on an early
+  $100$k-step convergence pilot used to structurally set the signal-timing constraints prior
+  to full training, not on the converged policy.}
+  \label{tab:maxgreen_pilot}
+  \begin{tabular}{lccc}
+    \toprule
+    \textbf{Max-green} & \textbf{Travel time (s)} & \textbf{Waiting (s)} & \textbf{P95 waiting (s)}\\
+    \midrule
+    \textbf{$60$~s (selected)} & \textbf{311.1} & \textbf{135.8} & \textbf{504}\\
+    $90$~s                     & 367.0          & 173.6          & 669\\
+    \midrule
+    $\Delta$ ($60$ vs.\ $90$)  & $-15.2\%$      & $-21.8\%$      & $-24.7\%$\\
+    \bottomrule
+  \end{tabular}
+\end{table}
+
 \section{Time-Varying Demand Profile}
 \label{app:demand}
 The per-episode demand follows a time-varying rate $\lambda(t)$ of duration $5400$~s, realized

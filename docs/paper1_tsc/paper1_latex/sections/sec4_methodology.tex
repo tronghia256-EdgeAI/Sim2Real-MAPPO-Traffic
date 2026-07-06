@@ -40,34 +40,28 @@ $w_w=-0.3$.
 To ensure stable temporal-difference learning, the final scalar is clipped to
 $[-2.0,\, +1.5]$. The individual components are detailed below.
 
-We emphasize that these six terms are \emph{not} six orthogonal objectives. Four of them are
-monotone functions of a single congestion signal---the per-lane halted-queue fraction $q_l$
+These six terms are \emph{not} six orthogonal objectives: four are monotone functions of a
+single congestion signal, the per-lane halted-queue fraction $q_l$
 (\texttt{effective\_queue\_norm}). The queue penalty applies its $L_2$ norm
-($\frac{1}{n_i}\sum_l q_l^2$, the Jensen anti-starvation form derived below), whereas the
-accumulated-delay penalty $\bar{w}(t)$ applies the $L_1$ norm of the \emph{same} vector
-($\frac{1}{n_i}\sum_l q_l$): the per-vehicle waiting timer is never read, so in code this term
-reduces exactly to the mean halted-queue fraction. The low-speed penalty and the
-phase-imbalance pressure term likewise rise monotonically with this congestion state. The
-reward is therefore best understood as dense, multi-scale gradient shaping around a
-queue-minimization core, in which the local ROI-exit throughput reward and the phase-switch
-penalty are the two genuinely distinct regularizers. The marginal value of each shaping term
-\emph{beyond} the $L_2$ queue core---rather than an assumption of independence---is what the
+($\frac{1}{n_i}\sum_l q_l^2$, the Jensen anti-starvation form below); the accumulated-delay
+penalty $\bar{w}(t)$ applies the $L_1$ norm of the \emph{same} vector---no per-vehicle
+waiting timer is ever read, so in code it reduces exactly to the mean halted-queue
+fraction, supplying a dense low-queue gradient that complements the quadratic term; the
+low-speed penalty activates only when the mean approach speed $\bar{v}$ falls below the
+threshold $\tau$, targeting stop-and-go congestion; and the phase-imbalance pressure rises
+with the same congestion state. The two genuinely distinct regularizers are the local
+ROI-exit throughput reward and the phase-switch penalty, the latter suppressing
+high-frequency phase flickering. The reward is therefore dense, multi-scale gradient
+shaping around a queue-minimization core, and the marginal value of each term
+\emph{beyond} the $L_2$ core---rather than an assumption of independence---is what the
 ablations of Section~\ref{sec:ablations} quantify.
 
 \paragraph{Anti-starvation queue penalty}
-Rather than minimizing the linear mean queue length across the $n_i$ controlled lanes,
-the mean of squared queue lengths $\frac{1}{n_i}\sum_{l=1}^{n_i} q_l^2$ is penalized.
-By Jensen's inequality,
-\begin{equation}
-\frac{1}{n_i} \sum_{l=1}^{n_i} q_l^2 \;\geq\; \left(\frac{1}{n_i} \sum_{l=1}^{n_i} q_l\right)^2,
-\label{eq:jensen}
-\end{equation}
-with equality holding strictly when the per-lane queues are perfectly balanced; the gap
-between the two quantities is exactly the queue variance. Consequently, the quadratic
-formulation implicitly penalizes spatial imbalance and discourages the starvation of
-minor approaches. For illustration, a highly imbalanced distribution $q = (1,0,0,0)$ incurs
-a penalty of $0.25$, whereas the balanced distribution $q = (0.25,0.25,0.25,0.25)$ incurs
-only $0.0625$---a four-fold reduction---despite identical total demand.
+Rather than the linear mean queue over the $n_i$ controlled lanes, the mean of
+\emph{squared} queues $\frac{1}{n_i}\sum_{l=1}^{n_i} q_l^2$ is penalized. By Jensen's
+inequality this exceeds the squared mean by exactly the per-lane queue variance, so the
+quadratic form penalizes spatial imbalance at equal total demand and thereby discourages
+the starvation of minor approaches.
 
 \paragraph{Phase-imbalance pressure}
 A signed \emph{phase-imbalance} term $p_i(t) \in [-1, 1]$ measures the queue delta between the
@@ -86,19 +80,15 @@ routing policy. In contrast to a one-sided $\max(p, 0)$ surrogate, which provide
 whenever the active allocation is already correct, the signed form supplies a continuous
 gradient that rewards serving the more congested group and penalizes serving the emptier one.
 
-A naming subtlety must be made explicit, because the reward pressure and the observation
-feature of the same name are reconciled rather than identical. The reward pressure $p_i(t)$ is
-\emph{signal-relative}: it is evaluated over the dynamic red/green partition induced by the
-active phase, as the normalized sum $\bigl(\sum_{\text{red}} q_l - \sum_{\text{green}} q_l\bigr)/n_i$.
-The observation feature $\mathrm{pressure\_norm}$ of Section~\ref{sec:obs_space} is instead
-\emph{geometry-relative}: it encodes the static group-mean imbalance
-$\tfrac{1}{2}\bigl(1 + \bar{q}_A - \bar{q}_B\bigr)$ over the fixed groups $A, B$. The two are
-bridged exactly by the phase one-hot vector: since the one-hot identifies which fixed group
-currently holds green, and $\mathrm{pressure\_norm}$ supplies $\bar{q}_A - \bar{q}_B = 2\,
-\mathrm{pressure\_norm} - 1$, the signal-relative reward pressure is an affine, phase-determined
-transform of these two observed quantities (exact up to the per-lane-to-approach aggregation, the equal-group-size scaling of the
-symmetric two-phase plans used here, and the boundary saturation). The actor's observation
-therefore contains the approach-aggregated information that its pressure reward optimizes.
+A naming subtlety: the reward pressure $p_i(t)$ is \emph{signal-relative}---evaluated
+over the dynamic red/green partition induced by the active phase---whereas the
+observation feature $\mathrm{pressure\_norm}$ of Section~\ref{sec:obs_space} is
+\emph{geometry-relative}, encoding the static group-mean imbalance over the fixed groups
+$A, B$. The phase one-hot identifies which fixed group holds green and
+$\bar{q}_A - \bar{q}_B = 2\,\mathrm{pressure\_norm} - 1$, so the reward pressure is an
+affine, phase-determined transform of observed quantities (exact up to approach
+aggregation, equal-group scaling, and boundary saturation): the actor observes the
+information its pressure reward optimizes.
 
 \paragraph{Local ROI-exit throughput}
 The agent is rewarded for vehicles actively clearing the intersection. The throughput term
@@ -117,17 +107,6 @@ any identity present at the previous step and absent at the current one, lateral
 changes (frequent under the sublane model) and the rare SUMO teleport are also counted as
 exits; this is a bounded source of measurement noise that the deployable ByteTrack ROI-exit
 counter shares identically, and therefore introduces no train/deploy discrepancy.
-
-\paragraph{Auxiliary terms}
-A phase-switch penalty ($w_s = -0.1$) discourages high-frequency phase flickering, and a
-low-speed penalty ($w_v = -0.2$) activates only when the mean approach speed $\bar{v}$
-falls below a threshold $\tau$, targeting stop-and-go congestion. Finally, the
-accumulated-delay penalty $\bar{w}(t)$ is realized as the mean halted-queue fraction---the
-same $\phi$-computable signal as the queue feature, but averaged linearly rather than
-squared. It supplies a dense low-queue gradient that complements the quadratic
-anti-starvation term while remaining fully camera-computable, as no per-vehicle waiting
-timer is read at any point. Its marginal contribution beyond the quadratic queue term is
-isolated by the delay-term ablation reported in Section~\ref{sec:ablations}.
 
 \subsection{MAPPO Architecture and Optimization}
 \begin{figure*}[!t]
@@ -177,6 +156,3 @@ running mean and variance are tracked online by Welford's algorithm~\cite{welfor
 serialized directly into the deployment checkpoint alongside the actor weights. Test-time
 inputs $\mathbf{o}_{i,t}$ are therefore normalized with statistics identical to those seen
 during training, without any dependence on live estimation.
-
-% [MAPPO training-loop pseudocode removed for length: the standard MAPPO loop with
-%  per-agent GAE, a parameter-shared actor, and a centralized multi-head critic.]

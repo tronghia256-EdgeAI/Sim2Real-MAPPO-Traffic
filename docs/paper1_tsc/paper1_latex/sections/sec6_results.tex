@@ -45,6 +45,15 @@ corridor evaluation \emph{reverses} this ranking; the reversal is systematic rat
 incidental, and Section~\ref{sec:topology} reports and analyzes it as a result about
 topology, not about training.
 
+\label{sec:emissions}%
+Finally, the last two columns of Table~\ref{tab:main_results} report post-hoc HBEFA-based
+CO\textsubscript{2} and fuel totals (Section~\ref{sec:metrics}); neither quantity is ever
+exposed to any controller or reward, so they are strictly consequences of the learned
+timing. The ordering mirrors the travel-time ranking: the proxy policy yields the lowest
+emissions in the camera-deployable class, reducing episode CO\textsubscript{2} by $9.8\%$
+against fixed-time and $8.2\%$ against Webster, consistent with delay---not the
+controller's objective function---being the dominant driver of idling emissions.
+
 \begin{table*}[t]
   \centering
   \caption{Main performance comparison on the N3 grid ($4\times4$) under time-varying peak
@@ -153,20 +162,18 @@ the corridor to a solution family whose optimality there is structural.
 \label{sec:restriction_cost}
 We isolate the price of the camera-only constraint by comparing the proxy policy against the
 otherwise-identical privileged-observation upper bound (the last row of
-Table~\ref{tab:main_results}): the reward, architecture, and training budget are held fixed, and
+Table~\ref{tab:main_results}): reward, architecture, and training budget are held fixed and
 only the state visibility differs, so the residual gap is attributable to the discarded
-privileged signals (exact halting counts, per-vehicle waiting times, and network-wide counts).
-On the N3 grid, restricting the observation to camera-computable features increases mean travel
-time by only \RestrictionCost\% ($288.5$ versus $279.7$~s), equivalently retaining \RetainPriv\%
-of the privileged policy's performance; the two policies' confidence intervals overlap, so the
-comparison is reported descriptively. This cost is small relative to the \ImproveStrongest\%
-improvement the proxy policy attains over the strongest camera-deployable classical baseline,
-supporting the central claim that the camera-observable feature set retains the overwhelming
-majority of the task-relevant information for the signal-timing objective.
-Fig.~\ref{fig:convergence} shows that this equivalence is not an endpoint artifact: the proxy
-policy's training-reward trajectory tracks the privileged variant's throughout the entire
-budget, with overlapping confidence bands from the first evaluation onward, indicating that
-the information restriction neither slows nor destabilizes learning.
+privileged signals. On the N3 grid, the restriction increases mean travel time by only
+\RestrictionCost\% ($288.5$ versus $279.7$~s)---retaining \RetainPriv\% of the privileged
+policy's performance---with overlapping confidence intervals, so the comparison is reported
+descriptively. This cost is small relative to the \ImproveStrongest\% improvement over the
+strongest camera-deployable classical baseline, supporting the central claim that the
+camera-observable feature set retains the overwhelming majority of the task-relevant
+information for the signal-timing objective. Fig.~\ref{fig:convergence} shows the
+equivalence is not an endpoint artifact: the proxy trajectory tracks the privileged
+variant's throughout the budget, with overlapping bands from the first evaluation onward,
+so the restriction neither slows nor destabilizes learning.
 
 \begin{figure}[t]
   \centering
@@ -182,12 +189,23 @@ the information restriction neither slows nor destabilizes learning.
 
 \subsection{Robustness to Sensing Noise}
 \label{sec:robustness_noise}
-To probe whether the camera-computable premise survives realistic perception error, the trained
-proxy policy is evaluated under the sensing-noise model of Section~\ref{sec:noise_model}. The base
-($1\times$) magnitudes and provenance of every perturbation mode are listed in
-Table~\ref{tab:noise_params}; all are fixed on a documented basis except the class-confusion flip
-rate, which is measured directly from the YOLOv11 validation-set confusion matrix. Each magnitude
-is scaled by a common factor $c\in\{0,0.5,1,2\}$, and Fig.~\ref{fig:noise_degradation} traces the
+\label{sec:noise_model}
+The camera-computable premise is meaningful only if the residual estimation error of the
+vision pipeline is bounded and accounted for. Rather than assume that the
+YOLOv11\,+\,ByteTrack estimators recover the proxy features exactly
+($\varepsilon_{i,t} = 0$), we model their residual error as the perturbation
+$\varepsilon_{i,t}$ of~\eqref{eq:projection} through five per-feature modes and two
+structural failures (Table~\ref{tab:noise_params}): a multiplicative calibration error on
+the effective queue and a matching one on the queue-derived pressure, additive jitter on
+low-speed estimates, a confusion flip rate on the class shares, and an additive occupancy
+bias, together with a one-step pipeline delay and a single-camera dropout. The base
+($1\times$) magnitudes are fixed on a documented
+basis~\cite{zhang2022_bytetrack,khanam2024_yolov11}, with one exception: the
+class-confusion flip rate is measured directly from the detector's confusion matrix on
+the held-out validation set; a fuller per-feature recovery study on labeled trajectory
+frames is left to the companion field deployment. Each magnitude
+is scaled by a common factor $c\in\{0,0.5,1,2\}$, the trained proxy policy is re-evaluated,
+and Fig.~\ref{fig:noise_degradation} traces the
 resulting degradation from clean features ($0\times$) to twice the calibrated envelope ($2\times$).
 Degradation is graceful rather than catastrophic: the worst point of the swept curve
 ($315.8$~s at $1\times$) stays below the strongest camera-deployable baseline
@@ -270,18 +288,16 @@ every regime the policy is never outperformed by fixed-time control, indicating 
 learned behavior does not overfit the calibration operating point---and that its advantage
 grows precisely where congestion makes signal timing hardest.
 
-A third axis of shift probes the lateral-dynamics assumption itself. The sublane-trained
-policy is evaluated zero-shot on a lane-based variant of the same network and demand:
-identical routes and vehicle mix, but with SUMO's default discrete-lane car-following in
-place of the $0.4$~m sublane resolution, so that motorcycles lose the filtering behavior
-the controller was trained under and effective capacity contracts for every controller
-(mean travel times rise to $445$--$518$~s). The proxy policy transfers without retraining:
-at $459.7$~s it remains ahead of Webster ($505.3$~s), SOTL ($502.3$~s), fixed-time
-($495.9$~s), and---most strikingly---the loop-actuated reference ($517.9$~s), whose
-per-second gap-out logic finds no exploitable headways once discrete lane queues saturate,
-while trailing max-pressure ($444.8$~s) by $3.3\%$. The camera-computable features
-therefore do not encode simulator-specific lateral dynamics, and the mixed-traffic sublane
-setting of contribution C4 does not privilege the learned controller.
+A third axis probes the lateral-dynamics assumption itself: the sublane-trained policy is
+evaluated zero-shot on a lane-based variant of the same network and demand (identical
+routes and mix, discrete-lane car-following in place of the $0.4$~m sublane resolution),
+under which effective capacity contracts for every controller ($445$--$518$~s). The policy
+transfers without retraining: at $459.7$~s it stays ahead of Webster ($505.3$~s), SOTL
+($502.3$~s), fixed-time ($495.9$~s), and the loop-actuated reference ($517.9$~s,
+worst---its gap-out logic finds no exploitable headways once discrete lane queues
+saturate), trailing only max-pressure ($444.8$~s) by $3.3\%$. The camera-computable
+features therefore encode no simulator-specific lateral dynamics, and the sublane setting
+of contribution C4 does not privilege the learned controller.
 % lanebased source: eval_tables/n3_grid_20260705_211433 (A_lanebased.log; n=5,
 % sumo_config_eval_lanebased.sumocfg = eval cfg minus lateral-resolution).
 
@@ -395,16 +411,7 @@ benefit of centralized training.
   \end{tabular}}
 \end{table}
 
-\subsection{Post-Hoc Environmental Indicators}
-\label{sec:emissions}
-The last two columns of Table~\ref{tab:main_results} report the HBEFA-based
-CO\textsubscript{2} and fuel totals (Section~\ref{sec:metrics}); neither quantity is ever
-exposed to the agent reward, so these are strictly post-hoc consequences of the learned
-timing. The ordering mirrors the
-travel-time ranking: the proxy policy yields the lowest emissions in the camera-deployable
-class, reducing episode CO\textsubscript{2} by $9.8\%$ against fixed-time and $8.2\%$ against
-Webster, consistent with delay---not the controller's objective function---being the dominant
-driver of idling emissions.
-
+% Post-hoc environmental indicators (former VI-G) merged into the closing paragraph of
+% VI-A (2026-07-06, page-budget revision); \label{sec:emissions} now resolves to VI-A.
 % tab:emissions merged into tab:main_results (last two columns) 2026-07-05; values from
 % results/paper1_mappo/eval_tables/n3_grid_MERGED (mg -> kg).

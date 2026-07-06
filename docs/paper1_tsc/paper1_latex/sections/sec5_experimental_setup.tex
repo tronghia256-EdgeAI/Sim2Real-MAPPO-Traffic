@@ -16,67 +16,33 @@ filtering behaviour, consistent with microscopic observations of motorcycle dyna
 Vietnamese mixed-traffic conditions~\cite{vn_roundabout}.
 
 The vehicle composition is a central calibration target. The motorcycle count share is set
-to $73\%$, anchored to the $72.6\%$ motorcycle mode share reported for
-Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities}; the remaining demand is allocated to
-passenger cars ($17\%$), trucks ($7\%$), and buses ($3\%$) by vehicle class.
-Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities} also reports motorcycle shares of $\approx 80$--$89\%$ for Hai~Phong, Da~Nang, Ho~Chi~Minh~City, and
-Can~Tho, a range deliberately bracketed by the composition sweep of
-Section~\ref{sec:generalization}. We distinguish count share from traffic \emph{load}: at a motorcycle
-passenger-car-unit (PCU) equivalence of $\approx 0.29$~\cite{cao_sano_hanoi},
-a $73\%$ motorcycle count corresponds to only about one-third of the total PCU-based load,
-with the exact fraction depending on the heavy-vehicle PCU values. Accordingly, count share
-is used when reasoning about lateral filtering, whereas PCU is used for capacity
-arguments. To reproduce realistic motorcycle swarming, the sub-lane parameters are set to
-\texttt{latAlignment=arbitrary} with a minimum lateral gap \texttt{minGapLat},
-which allows roughly three to four motorcycles to share a standard $3.2$~m urban lane
-alongside a passenger car.
-
-Under this calibration, a queue-discharge experiment yields a raw per-lane discharge of
-approximately $2450$~veh/h---well above a conventional car-lane saturation flow because
-motorcycles filter and discharge several abreast within a single lane. At the calibrated
-$73\%$ motorcycle share this corresponds to roughly $1500$~PCU/h per lane, characteristic of
-the mixed-flow regime documented for Hanoi~\cite{cao_sano_hanoi}. As regional compositions vary, the $73\%$ value is treated
-as a representative anchor rather than a universal constant, and the policy's robustness to
-compositional shift is defended explicitly through the systematic motorcycle sweep
-($\{50\%, 73\%, 90\%\}$) of Section~\ref{sec:generalization}.
+to $73\%$---anchored to the $72.6\%$ Hanoi mode share of
+Ngoc~\emph{et~al.}~\cite{ngoc2021_fivecities}, who report $\approx 80$--$89\%$ for four
+further Vietnamese cities, a range deliberately bracketed by the $\{50\%, 73\%, 90\%\}$
+composition sweep of Section~\ref{sec:generalization}---with the remainder allocated to
+passenger cars ($17\%$), trucks ($7\%$), and buses ($3\%$). Count share is distinguished
+from traffic \emph{load}: at a motorcycle passenger-car-unit (PCU) equivalence of
+$\approx 0.29$~\cite{cao_sano_hanoi}, the $73\%$ count share carries only about one-third
+of the PCU-based load, so count share informs the lateral-filtering arguments and PCU the
+capacity arguments. With \texttt{latAlignment=arbitrary} and a calibrated minimum lateral
+gap \texttt{minGapLat}, three to four motorcycles share a standard $3.2$~m urban lane
+alongside a passenger car, and a queue-discharge experiment yields $\approx 1500$~PCU/h
+per lane---characteristic of the Hanoi mixed-flow regime~\cite{cao_sano_hanoi}. The
+$73\%$ value is thus a representative anchor, not a universal constant, and robustness to
+compositional shift is defended by the sweep of Section~\ref{sec:generalization}.
 
 \subsubsection{Signal-Timing Bounds}
-The minimum green time is fixed at $15$~s (three decision intervals).
-This ensures that an activated phase discharges a meaningful platoon and suppresses the high-frequency
-phase flickering that otherwise traps wide motorcycle clusters within the intersection. The
-maximum green time is fixed at $60$~s. This value is justified by a simulation-based
-design-selection pilot on the $16$-junction N3 grid (seed~$42$, $100$k training steps),
-evaluated on held-out demand. As reported in Table~\ref{tab:maxgreen_pilot}, the $60$~s
-bound dominates a relaxed $90$~s bound across all primary metrics; in particular, the
-$90$~s bound severely degrades the $95$th-percentile (P95) waiting time
-(the selected $60$~s bound is $24.7\%$ lower), because excessively long green phases starve cross-phase
-movements, conflicting directly with the anti-starvation objective of the reward
-(Section~\ref{sec:reward}). The bounds are therefore adopted as a structural
-choice applied uniformly to every learned and heuristic controller. We note that the
-maximum green time additionally sets the scale of the \texttt{green\_timer\_norm} feature
-($\text{timer}/\text{max\_green}$); it is thus a coupled observation/model parameter
-prior to training and held identical across all arms, with the SUMO-actuated controller's
-\texttt{maxDur} matched to $60$~s for fairness.
-
-\begin{table}[t]
-  \centering
-  \caption{Maximum-green selection pilot (N3 grid, seed~$42$, $100$k steps, held-out
-  evaluation). Lower is better; the selected bound is in bold. Evaluation is based on an early
-  $100$k-step convergence pilot used to structurally set the signal-timing constraints prior
-  to full training, not on the converged policy.}
-  \label{tab:maxgreen_pilot}
-  \vspace{-4mm}
-  \begin{tabular}{lccc}
-    \toprule
-    \textbf{Max-green} & \textbf{Travel time (s)} & \textbf{Waiting (s)} & \textbf{P95 waiting (s)}\\
-    \midrule
-    \textbf{$60$~s (selected)} & \textbf{311.1} & \textbf{135.8} & \textbf{504}\\
-    $90$~s                     & 367.0          & 173.6          & 669\\
-    \midrule
-    $\Delta$ ($60$ vs.\ $90$)  & $-15.2\%$      & $-21.8\%$      & $-24.7\%$\\
-    \bottomrule
-  \end{tabular}
-\end{table}
+The minimum green time is fixed at $15$~s (three decision intervals), ensuring that an
+activated phase discharges a meaningful platoon and suppressing the high-frequency
+flickering that otherwise traps wide motorcycle clusters within the intersection. The
+maximum green time is fixed at $60$~s via a $100$k-step design-selection pilot on the N3
+grid, in which the $60$~s bound dominates a relaxed $90$~s bound by $15$--$25\%$ across
+all primary metrics (the pilot table is provided in the supplementary material), because
+excessively long greens starve cross-phase movements, conflicting with the
+anti-starvation objective of Section~\ref{sec:reward}. Both bounds are structural choices
+applied uniformly to every learned and heuristic controller; the maximum green also sets
+the scale of the \texttt{green\_timer\_norm} feature, and the SUMO-actuated controller's
+\texttt{maxDur} is matched to $60$~s for fairness.
 
 \subsection{Networks and Demand}
 \label{sec:networks}
@@ -127,40 +93,28 @@ as upper anchors rather than deployable competitors.
 \begin{itemize}
   \item \emph{Fixed-time}: an equal-split cycle ($30$~s per phase group), representing the
         legacy plan prevalent at the target intersections.
-  \item \emph{Webster fixed-time}~\cite{webster1958}: an analytically derived fixed-time
-        plan computed from PCU-weighted measured flows, with cycle length
-        $C = (1.5L + 5)/(1 - Y)$ clamped to $[40, 120]$~s and proportional green splits.
-        This provides a competitive classical baseline rather than a degenerate fixed-time
-        plan. To ensure a strict and fair comparison, Webster's saturation flow is explicitly
-        calibrated to the network's measured mixed-traffic sublane capacity
-        ($\approx 1500$~PCU/h/lane), preventing artificial performance degradation that would
-        occur if standard car-only saturation flows were assumed.
-  \item \emph{Max-Pressure}~\cite{varaiya2013_maxpressure}: a greedy pressure-based
-        heuristic that consumes the identical observation pipeline and phase groups as the
-        RL agents and grants right-of-way to the phase of highest pressure.
-  \item \emph{SOTL}~\cite{cools2013_sotl}: the self-organizing traffic-light rule, which
-        holds the current green until the red-approach vehicle count exceeds a demand
-        threshold ($\kappa = 5$) after the minimum green, and forces a switch at the
-        maximum green; the vehicle counts are read from the same proxy pipeline as the
-        RL agents.
-  \item \emph{SUMO-actuated} (instrumented reference): the gap-based actuation controller
-        native to SUMO~\cite{lopez2018_sumo}, configured with \texttt{minDur}~$=15$~s and
-        \texttt{maxDur}~$=60$~s to match the learned controllers. Its induction-loop
-        gap-out (\texttt{max-gap}~$=3$~s) is evaluated at simulation resolution
-        ($1$~s)---a per-second in-road sensing and actuation granularity that the $5$~s
-        camera pipeline cannot reproduce, which is precisely why it is classed as an
-        instrumented reference rather than a camera-deployable competitor.
-  \item \emph{IPPO}~\cite{dewitt2020_ippo}: an ablative learned baseline with an identical
-        actor architecture and training budget but with independent per-agent critics
-        conditioned solely on the local $26$-dimensional observation.
-        This isolates the contribution of centralized training with decentralized execution.
+  \item \emph{Webster fixed-time}~\cite{webster1958}: an analytical plan from PCU-weighted
+        measured flows, $C = (1.5L + 5)/(1 - Y)$ clamped to $[40, 120]$~s with proportional
+        splits; its saturation flow is calibrated to the measured sublane capacity
+        ($\approx 1500$~PCU/h/lane), so the comparison is not degraded by car-only
+        assumptions.
+  \item \emph{Max-Pressure}~\cite{varaiya2013_maxpressure}: a greedy pressure heuristic on
+        the identical observation pipeline and phase groups, serving the phase of highest
+        pressure.
+  \item \emph{SOTL}~\cite{cools2013_sotl}: holds green until the red-approach count exceeds
+        $\kappa = 5$ after the minimum green, with a forced switch at the maximum green;
+        counts are read from the same proxy pipeline.
+  \item \emph{SUMO-actuated} (instrumented reference): SUMO's native gap-based
+        actuation~\cite{lopez2018_sumo} (\texttt{minDur}~$=15$~s, \texttt{maxDur}~$=60$~s,
+        \texttt{max-gap}~$=3$~s) evaluated at $1$~s resolution---per-second in-road sensing
+        that the $5$~s camera pipeline cannot reproduce, hence an instrumented reference.
+  \item \emph{IPPO}~\cite{dewitt2020_ippo}: identical actor architecture and budget but
+        independent per-agent critics on the local observation, isolating the CTDE
+        contribution.
   \item \emph{MAPPO-privileged (upper bound)}: the identical MAPPO~\cite{yu2022_mappo}
-        algorithm whose observation is augmented to a $38$-dimensional vector incorporating
-        exact, non-camera-observable simulator quantities (exact halting counts,
-        waiting times, and total vehicle counts). The reward is held identical to the proxy
-        arm and only the state visibility differs, so the gap between this arm and the proxy
-        policy directly quantifies the \emph{information-restriction cost} of
-        Section~\ref{sec:restriction_cost}.
+        algorithm with the observation augmented to $38$ dimensions of exact simulator
+        quantities and the reward held fixed; its gap to the proxy policy quantifies the
+        \emph{information-restriction cost} of Section~\ref{sec:restriction_cost}.
 \end{itemize}
 
 \subsection{Metrics and Statistical Protocol}
@@ -173,17 +127,16 @@ trips (throughput). Environmental indicators
 model~\cite{krajzewicz2015_emissions}) are evaluated post hoc and are never exposed to the
 agent reward.
 
-To ensure statistical rigour, each learned method is trained with five independent seeds
-($42, 123, 456, 789, 1337$) and each checkpoint is evaluated on five held-out demand
-route-seeds per scenario; one sample is a checkpoint's mean over the route-seeds, so the
-reported variability reflects the policy-training variance. The deterministic heuristics
-are evaluated once per route-seed. All tabular results report the mean together with a
-$95\%$ confidence interval ($n = 5$). Statistical significance against each baseline is
-assessed with a two-sided Mann--Whitney $U$ test~\cite{mann1947_mwu}, with $p$-values
-corrected for multiple comparisons by the Holm--Bonferroni procedure~\cite{holm1979}, and
-effect size is reported through Cohen's~$d$~\cite{cohen1988}. We note up front that
-$n = 5$ training seeds gives the corrected test limited power; we therefore treat the
-effect sizes, not the $p$-values alone, as the primary evidence of consistency.
+Each learned method is trained with five independent seeds ($42, 123, 456, 789, 1337$)
+and each checkpoint is evaluated on five held-out demand route-seeds per scenario---one
+sample is a checkpoint's route-seed mean, so the reported variability reflects
+policy-training variance---while the deterministic heuristics are evaluated once per
+route-seed. All tables report the mean with a $95\%$ confidence interval ($n = 5$);
+significance against each baseline is assessed with a two-sided Mann--Whitney $U$
+test~\cite{mann1947_mwu} under Holm--Bonferroni correction~\cite{holm1979}, with effect
+size reported through Cohen's~$d$~\cite{cohen1988}. Because $n = 5$ seeds gives the
+corrected test limited power, effect sizes, not $p$-values alone, are treated as the
+primary evidence of consistency.
 
 \subsection{Training Configuration and Reproducibility}
 \label{sec:training}

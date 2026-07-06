@@ -4,81 +4,52 @@
 The central question posed by this work is not whether multi-agent reinforcement learning
 can control traffic signals---this is well established---but how much of that capability
 survives when the policy is denied every privileged simulator quantity and restricted to
-signals a roadside camera can actually compute. The experiments answer this quantitatively.
-The information-restriction cost, defined as the performance gap between the proxy policy and
-the privileged upper bound under identical pristine features (Section~\ref{sec:restriction_cost}),
-is only $\RestrictionCost\%$ in mean travel time, while the proxy policy itself improves on the strongest
-camera-deployable classical baseline by $\ImproveStrongest\%$. The interpretation is direct: for the signal-timing objective,
-the camera-observable feature set retains the overwhelming majority of information, and the
-residual loss from discarding exact per-vehicle delays and network-wide counts is small
-relative to the gains from learning itself. The one capability the camera-only stack does not
-fully recover is the per-second gap responsiveness of the loop-instrumented actuated
-reference, which on the grid attains a nominally better but statistically indistinguishable
-mean (Section~\ref{sec:res_quantitative}); the practical trade this quantifies is a
-single-digit-percentage travel-time concession in exchange for eliminating all in-pavement
-detection hardware. This isolates a result that prior camera-state RL
-leaves implicit, because those methods constrain the observation while continuing to train on
-a privileged reward~\cite{azfar2025_cosim,dai2022_worldmodels}; here the reward is itself
-camera-computable, so the reported cost reflects a genuinely deployable controller rather than
-a partially privileged one.
+signals a roadside camera can actually compute. The experiments answer quantitatively: the
+information-restriction cost is \RestrictionCost\% in mean travel time
+(Section~\ref{sec:restriction_cost}), the proxy policy improves on the strongest
+camera-deployable classical baseline by \ImproveStrongest\%, and the one capability not
+fully recovered is the per-second gap responsiveness of the loop-instrumented actuated
+reference, whose grid advantage is nominal and statistically indistinguishable
+(Section~\ref{sec:res_quantitative})---a single-digit-percentage travel-time concession in
+exchange for eliminating all in-pavement detection hardware. This isolates a result that
+prior camera-state RL leaves implicit: those methods constrain the observation while still
+training on a privileged reward~\cite{azfar2025_cosim,dai2022_worldmodels}, whereas here
+the reward itself is camera-computable, so the reported cost reflects a genuinely
+deployable controller rather than a partially privileged one.
 
-The mechanism behind this performance is illuminated by the ablations
-(Section~\ref{sec:ablations}). The two reward components designed against starvation---the
-mean-of-squared-queue penalty and the signed phase-imbalance term---contribute disproportionately to
-the tail-latency metric: removing either inflates the P95 waiting time far more than the mean,
-confirming that the quadratic penalty and the directional phase-imbalance signal act precisely where
-a linear queue average and a one-sided pressure surrogate~\cite{varaiya2013_maxpressure,
-wei2019_presslight} are blind. The advantage of centralized training over the independent-critic
-variant~\cite{dewitt2020_ippo} further indicates that the observed gains are not merely the
-product of a richer state, but of coordinated credit assignment across multiple intersections
-under shared, non-stationary demand.
-
-The corridor experiment bounds the scope of applicability from the other side
-(Section~\ref{sec:topology}). Queue-centric, per-junction objectives encode no progression
-incentive, and on a single-axis arterial---where classical control already operates near the
-instrumented ceiling---the learned policy surrenders its advantage rather than augmenting it.
-We regard this as a finding about objective structure, not a defect of the sensing constraint:
-nothing in the corridor result implicates the camera-computable features themselves, and the
-identical constrained formulation is the strongest deployable method on the grid. The
-practical reading is a complexity threshold. Below it, classical progression control is
-sufficient and learned control cannot repay its complexity; above it, the heuristics degrade
-and the learned policy captures most of the remaining headroom---an argument for deploying
-the two families side by side, matched to topology, rather than in competition.
-
-These findings should be read as closing an \emph{observation} gap, which is distinct from,
-and complementary to, the \emph{dynamics} gap that dominates sim-to-real transfer in robotics
-and in prior transfer-oriented TSC~\cite{peng2018_dynrand,zhao2020_sim2real_survey,
-da2024_promptgat}. The graceful degradation observed across the $\{0\times,0.5\times,1\times,2\times\}$
-sensing-noise envelope (Section~\ref{sec:robustness_noise}) shows that the policy does not rely
-on brittle, high-precision feature recovery: performance declines smoothly rather than
-collapsing as perception error grows, and the relative ordering against the heuristic baselines
-is preserved throughout. We emphasize that this is evidence about the policy's tolerance to
-bounded perception error under a documented-basis noise model, not a claim of guaranteed field
-transfer; the latter requires the dynamics gap to be addressed in tandem and is the subject of
-the companion study.
-
-From a practitioner's standpoint, the practical implication is that adaptive, learned signal
-control need not wait for instrumented intersections or privileged feedback channels. A single
-camera and a legacy two-phase controller---the prevailing hardware in many developing
-metropolises---are sufficient to host the policy, since every quantity required at inference
-is derived from detection and tracking alone. This lowers the deployment barrier from a
-sensing-infrastructure problem to a calibration-and-integration problem.
+For practitioners the implication is direct: adaptive, learned signal control need not
+wait for instrumented intersections or privileged feedback channels. A single camera and a
+legacy two-phase controller---the prevailing hardware in many developing
+metropolises---suffice to host the policy, since every quantity required at inference is
+derived from detection and tracking alone; matched to topology
+(Section~\ref{sec:topology}), classical progression control should be retained on simple
+arterials while learned camera-based control is allocated to the multi-axis network cores
+where the classical heuristics degrade. The deployment barrier thus shifts from a
+sensing-infrastructure problem to a calibration-and-integration problem. These findings
+close an \emph{observation} gap, distinct from and complementary to the \emph{dynamics}
+gap that dominates sim-to-real transfer in robotics and transfer-oriented
+TSC~\cite{peng2018_dynrand,zhao2020_sim2real_survey,da2024_promptgat}: the graceful
+$0$--$2\times$ degradation of Section~\ref{sec:robustness_noise} is evidence of tolerance
+to bounded perception error under a documented-basis noise model, not a claim of
+guaranteed field transfer, which requires the dynamics gap to be addressed in tandem and
+is the subject of the companion study.
 
 \noindent\textbf{Limitations and future work.}
-While this study isolates the information-restriction cost of camera-computable control,
-several limitations remain. First, the evaluation employs a two-phase logic without protected
-turns, matching legacy hardware but limiting international generality. Second, the 1D effective
-queue is a scalar proxy for 2D sublane flow, and the local throughput reward introduces a minor
-theoretical risk of downstream spillback (greedy flushing) that the central critic only
-partially mitigates. Third, with five training seeds the Holm-corrected pairwise comparisons
-on the grid are underpowered: the reported margins over the deployable baselines are
-large-effect (Cohen's $|d| \geq 1.13$) but not individually certified at $p < 0.05$, and a
-larger seed budget would be required to convert these consistent trends into per-comparison
-significance. Fourth, the corridor reversal (Section~\ref{sec:topology}) marks a genuine
-boundary of the present objective family: the vision-proxy reward contains no progression
-term, so the method should be positioned at multi-axis network cores rather than offered as a
-universal replacement for arterial coordination; augmenting the objective with explicit
-offset or green-wave incentives---while keeping every term camera-computable---is a natural
-extension. Finally, the findings establish the robustness boundary in simulation;
-bridging the physical dynamics gap with measured feature-recovery calibration is left to the
-companion field deployment.
+\begin{itemize}
+  \item The evaluation employs a two-phase logic without protected turns, matching legacy
+        hardware but limiting international generality.
+  \item The 1D effective queue is a scalar proxy for 2D sublane flow, and the local
+        throughput reward carries a minor theoretical risk of downstream spillback (greedy
+        flushing) that the central critic only partially mitigates.
+  \item With five training seeds the Holm-corrected pairwise comparisons on the grid are
+        underpowered: the margins over the deployable baselines are large-effect (Cohen's
+        $|d| \geq 1.13$) but not individually certified at $p < 0.05$.
+  \item The corridor reversal (Section~\ref{sec:topology}) marks a genuine boundary of the
+        present objective family: the vision-proxy reward contains no progression term, so
+        the method targets multi-axis network cores rather than arterial coordination;
+        augmenting the objective with explicit, camera-computable offset or green-wave
+        incentives is a natural extension.
+  \item The robustness boundary is established in simulation; bridging the physical
+        dynamics gap with measured feature-recovery calibration is left to the companion
+        field deployment.
+\end{itemize}

@@ -5,36 +5,24 @@
 \label{sec:decpomdp}
 We formulate cooperative multi-intersection signal control as a Decentralized
 Partially Observable Markov Decision Process
-(Dec-POMDP)~\cite{oliehoek2016_decpomdp}, the canonical model for a team of agents
-that optimize a shared return under strictly local information. Each agent $i$
-controls one signalized intersection and, by construction, never accesses the global
-network state directly. The problem is the tuple
-$\langle \mathcal{N}, \mathcal{S}, \{\mathcal{A}_i\}, \{\mathcal{O}_i\},
-\mathcal{P}, \mathcal{R}, \gamma \rangle$.
-
-To keep the transition and reward maps well defined over simultaneous decisions, we
-fix the \emph{joint} action space as the Cartesian product of the per-agent action
-sets,
+(Dec-POMDP)~\cite{oliehoek2016_decpomdp}
 \begin{equation}
+  \langle \mathcal{N}, \mathcal{S}, \{\mathcal{A}_i\}, \{\mathcal{O}_i\},
+  \mathcal{P}, \mathcal{R}, \gamma \rangle,
+  \qquad
   \mathcal{A} \equiv \prod_{i=1}^{N} \mathcal{A}_i,
   \label{eq:joint_action}
 \end{equation}
-so that a joint action is $\mathbf{a}_t = (a_{1,t}, \dots, a_{N,t}) \in \mathcal{A}$.
-The tuple's classical elements follow their standard definitions:
-$\mathcal{N} = \{1, \dots, N\}$ is the set of homogeneous agents (one per signalized
-intersection), $\mathcal{S}$ is the global state encoding the microscopic configuration of
-every vehicle and signal, $\mathcal{P}\colon \mathcal{S} \times \mathcal{A} \to
-\Delta(\mathcal{S})$ is the transition kernel induced by the traffic dynamics (which also
-enforces all safety-critical signal timing), $\mathcal{R}\colon \mathcal{S} \times \mathcal{A}
-\to \mathbb{R}^{N}$ returns a per-agent scalar reward $r_{i,t}$, and $\gamma = 0.99$ is the
-discount factor. The two components central to this work are the \emph{per-agent action space}
-$\mathcal{A}_i = \{0, 1\}$---a binary phase-group selection composed into the joint space
-via~\eqref{eq:joint_action}---and the \emph{local observation space} $\mathcal{O}_i$, the
-$26$-dimensional camera-computable proxy detailed in Section~\ref{sec:obs_space}.
-Agents act at a fixed interval of $\Delta t = 5$~s over $1080$ decision steps
-($5400$~s) per episode. The state $\mathcal{S}$ assumed by this model is, however,
-only available in simulation; reconciling it with what a deployed controller can
-actually sense motivates the projection developed next.
+with standard semantics: one homogeneous agent per signalized intersection, a global
+state $\mathcal{S}$ that encodes the microscopic configuration of every vehicle and
+signal, a transition kernel $\mathcal{P}$ that also enforces all safety-critical signal
+timing, a per-agent scalar reward $r_{i,t}$, and $\gamma = 0.99$. The two components
+central to this work are the binary per-agent action space $\mathcal{A}_i = \{0, 1\}$
+(Section~\ref{sec:action_space}) and the local observation space $\mathcal{O}_i$, the
+$26$-dimensional camera-computable proxy of Section~\ref{sec:obs_space}. Agents act
+every $\Delta t = 5$~s over $1080$ decision steps ($5400$~s) per episode. The state
+$\mathcal{S}$ is available only in simulation; reconciling it with what a deployed
+controller can actually sense motivates the projection developed next.
 
 \subsection{The Observation Projection}
 \label{sec:projection}
@@ -129,45 +117,24 @@ summarized in Table~\ref{tab:obs_space}.
 \end{table}
 The end-to-end proxy construction is visualized later in Figure~\ref{fig:architecture} as
 part of the overall system architecture.
-% \begin{figure}[!t]
-%   \centering
-%   \includegraphics[width=\columnwidth]{assets/figures/fig1.pdf}
-%   \caption{Vision-proxy construction $\phi$: each approach ROI is reduced by the
-%   YOLOv11\,+\,ByteTrack estimator to five bounded features; the four approaches form
-%   the $20$ approach dimensions, and the six controller dimensions (phase one-hot,
-%   green-timer, and the \emph{derived} signed group-mean pressure that reuses only the
-%   approach queue values) complete the $26$-dimensional observation.}
-%   \label{fig:vision_proxy}
-%   \vspace{-4mm}
-% \end{figure}
 
 \subsection{Action Space and Signal Constraints}
 \label{sec:action_space}
 The per-agent action space is binary, $\mathcal{A}_i = \{0,1\}$, selecting which of
 two non-conflicting phase groups---Group~A or Group~B, whose approach membership is
-fixed by the intersection phase plan rather than by observation-index order---receives
-the right-of-way. This abstraction matches the legacy fixed-time hardware prevalent in
-developing-city corridors and keeps the interface compatible with binary serial
-actuation. The agent decides only \emph{which} group is served, not \emph{when}
-transitions occur: the transition kernel $\mathcal{P}$ enforces the safety-critical
-timing as hard constraints---a mandatory $3$~s yellow clearance on every switch and a
-$15$~s minimum green that prevents high-frequency flickering. When a sampled action
-requests a switch before the $15$~s minimum green has elapsed, $\mathcal{P}$ overrides
-it by holding the current phase. Consistent with on-policy learning, the agent's
-\emph{sampled} action and its log-probability are what enter the rollout buffer---the
-PPO importance ratio is defined over the policy's own decision---while the override's
-\emph{consequence} (no phase change) is reflected in the realized phase dynamics, the
-next observation's phase one-hot (read from the controller state), and the
-switch-penalty term, which is keyed to the realized switch indicator rather than to the
-requested action. Credit assignment is therefore consistent: the policy learns that
-requesting a switch during the minimum-green lockout is inconsequential and incurs no
-spurious switch penalty. The $60$~s maximum green
-is \emph{not} a forced switch; it caps the accumulated green timer and sets the
-normalization scale of the \texttt{green\_timer\_norm} feature
-(Section~\ref{sec:obs_space}). Cross-movement starvation is therefore discouraged
-through the reward shaping (Section~\ref{sec:reward}) rather than hard-coded by $\mathcal{P}$,
-cleanly separating learned phase selection from operational safety independently of
-the policy parameters. 
+fixed by the intersection phase plan---receives the right-of-way; this abstraction
+matches the legacy two-phase hardware prevalent in developing-city corridors. The
+agent decides only \emph{which} group is served, not \emph{when} transitions occur:
+$\mathcal{P}$ enforces a mandatory $3$~s yellow clearance on every switch and a
+$15$~s minimum green, overriding (by holding the current phase) any switch requested
+before the minimum green has elapsed. The sampled action and its log-probability
+enter the rollout buffer while the switch penalty is keyed to the \emph{realized}
+switch indicator, so credit assignment under the override remains consistent and no
+spurious penalty is incurred. The $60$~s maximum green is \emph{not} a forced switch;
+it caps the accumulated green timer and sets the normalization scale of the
+\texttt{green\_timer\_norm} feature (Section~\ref{sec:obs_space}), leaving
+cross-movement starvation to the reward shaping (Section~\ref{sec:reward}) and
+cleanly separating learned phase selection from operational safety.
 Figure~\ref{fig:signal_fsm} summarizes this two-phase logic and
 the environment-enforced timing.
 \begin{figure}[H]
@@ -183,35 +150,5 @@ the environment-enforced timing.
   \label{fig:signal_fsm}
   \vspace{-4mm}
 \end{figure}
-\subsection{Sensing-Noise Model (Overview)}
-\label{sec:noise_model}
-The camera-computable premise of Sections~\ref{sec:projection}--\ref{sec:obs_space}
-is meaningful only if the residual estimation error of the vision pipeline is
-bounded and accounted for. Rather than assume that the YOLOv11\,+\,ByteTrack
-estimators recover the proxy features exactly ($\varepsilon_{i,t} = 0$), we model
-their residual error explicitly as the perturbation $\varepsilon_{i,t}$
-of~\eqref{eq:projection} through five per-feature modes and two structural failures: a
-multiplicative calibration error on the effective queue, a matching calibration error on
-the queue-derived pressure, additive jitter on low-speed estimates, a confusion flip rate
-on the class shares, and an additive occupancy bias, together with a one-step pipeline
-delay and a single-camera dropout. The base ($1\times$) magnitudes are fixed on a documented
-basis~\cite{zhang2022_bytetrack,khanam2024_yolov11}, with one exception: the
-class-confusion flip rate is measured directly from the detector's confusion
-matrix on the held-out validation set. A fuller per-feature recovery study on
-labeled trajectory frames is left to the companion field deployment. The full parameterization, per-feature provenance, and the
-$\{0\times, 0.5\times, 1\times, 2\times\}$ degradation sweep that drives the
-robustness evaluation are presented in Section~\ref{sec:robustness_noise}
-(Table~\ref{tab:noise_params}), where they are used.
-
-% \begin{figure}[t]
-%   \centering
-%   \includegraphics[width=\columnwidth]{assets/figures/fig3.pdf}
-%   \caption{Sensing-noise injection. Training uses the clean proxy
-%   $\phi(\mathbf{s}_t)$ ($\varepsilon=0$); only at evaluation are the five
-%   per-feature noise modes added as
-%   $\mathbf{o}_i = \phi(\mathbf{s}_t) + c\,\varepsilon$ and swept over
-%   $c \in \{0, 0.5, 1, 2\}\times$ to trace the degradation curve
-%   (Section~\ref{sec:robustness_noise}).}
-%   \label{fig:noise_model}
-%   \vspace{-4mm}
-% \end{figure}
+% NOTE: the Sensing-Noise Model overview (formerly Sec. III-F, \label{sec:noise_model})
+% was merged into Sec. VI (Robustness to Sensing Noise) where it is used.
