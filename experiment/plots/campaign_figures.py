@@ -409,10 +409,13 @@ def fig_restriction_cost() -> None:
 
 
 def fig_noise() -> None:
-    """FIG-6: mean travel time vs noise envelope scale, with 95% CI band over
-    route seeds, the two structural failure modes as markers at the 1x envelope,
-    and the strongest camera-deployable classical baseline as a horizontal
-    reference (read from the MERGED main-table eval — same scenario)."""
+    """FIG-6, two panels on a shared y-axis: (a) mean travel time vs the common
+    noise-envelope scale (95% CI band over route seeds); (b) the two structural
+    failure modes (plus the clean reference) as separate categorical points —
+    they are NOT points on the scale axis, so they get their own panel. The
+    strongest camera-deployable classical baseline (read from the MERGED
+    main-table eval, same scenario) is a dashed reference across both panels,
+    with the region above it lightly shaded ("worse than baseline")."""
     plt = _setup_mpl()
     base = RESULTS / "noise_robustness"
     if not base.exists():
@@ -430,15 +433,20 @@ def fig_noise() -> None:
                 ref_val, ref_name = min(cands)
         except Exception:
             pass
-    fig, ax = plt.subplots(figsize=(COL_W, 2.8))
+    fig, (ax, axb) = plt.subplots(
+        1, 2, figsize=(COL_W, 2.5), sharey=True,
+        gridspec_kw={"width_ratios": [1.7, 1.05], "wspace": 0.07})
     drawn = False
     import csv as _csv
     sweeps = sorted(base.glob("*/sweep.csv"))
-    struct_style = {"dropout_approach0": ("s", "camera dropout"),
-                    "delay_1step": ("D", "1-step delay")}
-    for sweep in sweeps:
+    # panel-(b) slot per condition: (x position, marker, 2-line tick label)
+    struct_slots = {"clean": (0, "o", "clean\n(0×)"),
+                    "delay_1step": (1, "D", "1-step\ndelay"),
+                    "dropout_approach0": (2, "s", "camera\ndropout")}
+    lo_all, hi_all = [], []
+    for si, sweep in enumerate(sweeps):
         scales, travel, ci95 = [], [], []
-        structural = []  # (marker, label, y)
+        structural = {}  # cond -> (mean, ci95)
         with open(sweep, encoding="utf-8") as f:
             for row in _csv.DictReader(f):
                 cond = row["condition"]
@@ -448,43 +456,77 @@ def fig_noise() -> None:
                     n = max(int(float(row.get("n_seeds") or 1)), 1)
                 except (ValueError, TypeError):
                     continue
+                c95 = 1.96 * sd / np.sqrt(n)
                 if cond.startswith("scale_"):
                     try:
-                        scales.append(float(cond.split("_", 1)[1]))
+                        s = float(cond.split("_", 1)[1])
                     except ValueError:
                         continue
+                    scales.append(s)
                     travel.append(tv)
-                    ci95.append(1.96 * sd / np.sqrt(n))
-                elif cond in struct_style:
-                    structural.append((*struct_style[cond], tv))
+                    ci95.append(c95)
+                    if s == 0.0:
+                        structural["clean"] = (tv, c95)
+                elif cond in struct_slots:
+                    structural[cond] = (tv, c95)
         if not scales:
             continue
         order = np.argsort(scales)
         sc = np.array(scales)[order]
         tv = np.array(travel)[order]
         ci = np.array(ci95)[order]
-        lbl = "MAPPO (proxy)" if len(sweeps) == 1 else sweep.parent.name[:18]
+        lbl = "MAPPO (proxy), mean ± 95% CI" if len(sweeps) == 1 \
+            else sweep.parent.name[:18]
         line, = ax.plot(sc, tv, marker="o", ms=4, label=lbl, zorder=3)
         ax.fill_between(sc, tv - ci, tv + ci, alpha=0.2,
                         color=line.get_color(), lw=0)
-        for mk, slbl, y in structural:
-            ax.scatter([1.0], [y], marker=mk, s=28, color=line.get_color(),
-                       edgecolors="black", linewidths=0.5, zorder=4,
-                       label=f"{slbl} (1×)")
+        lo_all.append(float((tv - ci).min()))
+        hi_all.append(float((tv + ci).max()))
+        # panel (b): categorical points with error bars, same visual language
+        off = 0.0 if len(sweeps) == 1 else (si - (len(sweeps) - 1) / 2) * 0.25
+        for cond, (xpos, mk, _tick) in struct_slots.items():
+            if cond not in structural:
+                continue
+            y, c95 = structural[cond]
+            col = "0.45" if cond == "clean" else line.get_color()
+            axb.errorbar([xpos + off], [y], yerr=[c95], fmt=mk, ms=5,
+                         color=col, mec="black", mew=0.5,
+                         capsize=2.5, elinewidth=0.9, zorder=4)
+            if len(sweeps) == 1:
+                axb.annotate(f"{y:.0f}", (xpos, y), textcoords="offset points",
+                             xytext=(5, 5), fontsize=6, color="0.15")
+            lo_all.append(y - c95)
+            hi_all.append(y + c95)
         drawn = True
-    if ref_val is not None:
-        ax.axhline(ref_val, ls="--", lw=1.0, color="0.35", zorder=2,
-                   label=f"best deployable baseline ({ref_name})")
-    ax.set_xlabel("Noise envelope scale (×)")
-    ax.set_ylabel("Mean travel time (s)")
-    ax.grid(True, alpha=0.4)
-    if drawn:
-        ax.legend(fontsize=6, frameon=False)
-        out = OUT_DIR / "noise_robustness.pdf"
-        fig.savefig(out, bbox_inches="tight", dpi=300)
-        print(f"[fig] saved {out}")
-    else:
+    if not drawn:
         print("[fig] noise: no scale_* conditions found — skip")
+        plt.close(fig)
+        return
+    pad = 0.06 * (max(hi_all) - min(lo_all))
+    ax.set_ylim(min(lo_all) - pad, max(hi_all) + 3.2 * pad)
+    for a in (ax, axb):
+        if ref_val is not None:
+            a.axhline(ref_val, ls="--", lw=1.0, color="0.35", zorder=2)
+            a.axhspan(ref_val, ax.get_ylim()[1], color="#b71c1c",
+                      alpha=0.05, lw=0, zorder=1)
+        a.grid(True, alpha=0.4)
+    if ref_val is not None:
+        ax.text(0.03, 0.975, f"shaded: worse than best deployable\n"
+                f"baseline ({ref_name.capitalize()}, {ref_val:.0f} s)",
+                transform=ax.transAxes, va="top", ha="left",
+                fontsize=6, color="#7a2f2f")
+    ax.set_title("(a) noise-scale sweep", fontsize=8)
+    ax.set_xlabel("Noise envelope scale (× calibrated)")
+    ax.set_ylabel("Mean travel time (s)")
+    ax.legend(fontsize=6, frameon=False, loc="lower left")
+    axb.set_title("(b) structural failures", fontsize=8)
+    axb.set_xlim(-0.55, 2.75)
+    axb.set_xticks([s[0] for s in struct_slots.values()])
+    axb.set_xticklabels([s[2] for s in struct_slots.values()], fontsize=6)
+    axb.tick_params(axis="y", length=0)
+    out = OUT_DIR / "noise_robustness.pdf"
+    fig.savefig(out, bbox_inches="tight", dpi=300)
+    print(f"[fig] saved {out}")
     plt.close(fig)
 
 

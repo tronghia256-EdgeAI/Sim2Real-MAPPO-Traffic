@@ -233,13 +233,14 @@ recovery.
 \begin{figure}[t]
   \centering
   \includegraphics[width=\columnwidth]{assets/figures/fig6_noise_degradation.pdf}
-  \caption{Graceful degradation under the sensing-noise sweep. Mean travel time of the proxy
-  policy (mean $\pm\,95\%$ CI over five route seeds) as the common noise scale grows from
-  $0\times$ (clean) to twice the calibrated envelope; markers at $1\times$ show the two
-  structural failures, and the dashed line is the strongest camera-deployable baseline
-  (Webster). The swept curve remains below the baseline across the full $0$--$2\times$
-  envelope; a one-step latency is absorbed, while a full approach-camera dropout reaches
-  parity with---but not worse than---the baseline.}
+  \caption{Graceful degradation under the sensing-noise sweep (mean $\pm\,95\%$ CI over
+  five route seeds). (a)~Mean travel time of the proxy policy as the common noise scale
+  grows from $0\times$ (clean) to twice the calibrated envelope. (b)~The two structural
+  failure modes beside the clean reference. In both panels the dashed line marks the
+  strongest camera-deployable baseline (Webster); the shaded region above it is where the
+  policy would fall behind that baseline. The swept curve remains below the baseline across
+  the full $0$--$2\times$ envelope; a one-step latency is absorbed, while a full
+  approach-camera dropout reaches parity with---but not worse than---the baseline.}
   \label{fig:noise_degradation}
   \vspace{-4mm}
 \end{figure}
