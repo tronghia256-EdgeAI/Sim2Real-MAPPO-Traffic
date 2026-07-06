@@ -409,169 +409,191 @@ def fig_restriction_cost() -> None:
 
 
 def fig_noise() -> None:
-    """FIG-6 (publication style), two panels on a shared y-axis:
-      (a) mean travel time vs the common noise-envelope scale, 95% CI band
-          over route seeds;
-      (b) the structural failure modes (clean reference, 1-step delay, camera
-          dropout) as bars with 95% CI whiskers — they are NOT points on the
-          scale axis, so they get their own categorical panel.
+    """FIG-6 -- sensing-noise robustness, built for an IEEE Transactions page.
+
+    Two panels sharing one truncated y-axis:
+      (a) mean travel time vs the common noise-envelope scale, with a 95%
+          confidence band over the route seeds;
+      (b) the two structural failure modes (1-step latency, camera dropout)
+          against the clean reference, as a dot-and-whisker panel.
+
+    Panel (b) uses point estimates with 95% CI whiskers rather than bars: the
+    y-axis is shared with (a) and therefore truncated, and a bar encodes value
+    as length from zero, so bars on a non-zero baseline would misstate the
+    differences. Dots do not carry that implication and read honestly on a
+    truncated scale.
+
     The strongest camera-deployable classical baseline (read from the MERGED
-    main-table eval, same scenario) is a dashed reference across both panels;
-    the region above it is lightly shaded (worse than the baseline).
-    Exports vector PDF + SVG + 600-dpi PNG."""
-    plt = _setup_mpl()
+    main-table eval for the same scenario) is a dashed reference drawn across
+    both panels; everything above it is the region where the learned policy
+    would trail that baseline. Exports vector PDF + SVG + 600-dpi PNG.
+    """
+    _setup_mpl()
+    import csv as _csv
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+    from matplotlib.lines import Line2D
+    from matplotlib.patches import Patch
+
     base = RESULTS / "noise_robustness"
     if not base.exists():
         print("[fig] noise: no noise_robustness/ -- skip")
         return
-    # horizontal reference: min mean travel over the deployable classical set
-    ref_val, ref_name = None, None
-    deployable = ("webster", "maxpressure", "sotl", "fixed")
+
+    # -- strongest camera-deployable baseline (fallback keeps the fig honest
+    #    even when run outside the campaign layout) ----------------------
+    ref_val, ref_name = 321.6, "webster"
     for sj in sorted((RESULTS / "eval_tables").glob("*MERGED*/summary.json")):
         try:
             agg = json.loads(sj.read_text(encoding="utf-8"))["aggregates"]
             cands = [(agg[m]["mean_travel_time_s"]["mean"], m)
-                     for m in deployable if m in agg]
+                     for m in ("webster", "maxpressure", "sotl", "fixed")
+                     if m in agg]
             if cands:
                 ref_val, ref_name = min(cands)
         except Exception:
             pass
 
-    import csv as _csv
-    # panel-(b) slot per condition: (x position, tick label)
-    struct_slots = {"clean": (0, "Clean"),
-                    "delay_1step": (1, "1-step\ndelay"),
-                    "dropout_approach0": (2, "Camera\ndropout")}
-    runs = []  # (dir name, scales, travel, ci95, {cond: (mean, ci95)})
+    # -- read the sweep(s): scale points + the two structural conditions --
+    STRUCT = {"delay_1step": ("D", "1-step\nlatency"),
+              "dropout_approach0": ("s", "Camera\ndropout")}
+    runs = []  # (scales, mean, ci95, {cond: (mean, ci95)})
     for sweep in sorted(base.glob("*/sweep.csv")):
-        scales, travel, ci95 = [], [], []
-        structural = {}
+        sc, mu, ci, struct = [], [], [], {}
         with open(sweep, encoding="utf-8") as f:
             for row in _csv.DictReader(f):
                 cond = row["condition"]
                 try:
-                    tv = float(row["mean_travel_time_s"])
+                    m = float(row["mean_travel_time_s"])
                     sd = float(row.get("std_travel_time_s") or 0.0)
                     n = max(int(float(row.get("n_seeds") or 1)), 1)
                 except (ValueError, TypeError):
                     continue
-                c95 = 1.96 * sd / np.sqrt(n)
+                half = 1.96 * sd / np.sqrt(n)
                 if cond.startswith("scale_"):
                     try:
                         s = float(cond.split("_", 1)[1])
                     except ValueError:
                         continue
-                    scales.append(s)
-                    travel.append(tv)
-                    ci95.append(c95)
+                    sc.append(s); mu.append(m); ci.append(half)
                     if s == 0.0:
-                        structural["clean"] = (tv, c95)
-                elif cond in struct_slots:
-                    structural[cond] = (tv, c95)
-        if not scales:
-            continue
-        order = np.argsort(scales)
-        runs.append((sweep.parent.name, np.array(scales)[order],
-                     np.array(travel)[order], np.array(ci95)[order],
-                     structural))
+                        struct["clean"] = (m, half)
+                elif cond in STRUCT:
+                    struct[cond] = (m, half)
+        if sc:
+            o = np.argsort(sc)
+            runs.append((np.array(sc)[o], np.array(mu)[o],
+                         np.array(ci)[o], struct))
     if not runs:
         print("[fig] noise: no scale_* conditions found -- skip")
         return
 
-    # shared y-range across both panels (data + whiskers + label headroom)
-    lows, highs = [], []
-    for _, _, tv, ci, structural in runs:
-        lows.append(float((tv - ci).min()))
-        highs.append(float((tv + ci).max()))
-        for v, c in structural.values():
-            lows.append(v - c)
-            highs.append(v + c)
-    y0 = 10 * np.floor((min(lows) - 4) / 10)
-    y1 = 10 * np.ceil((max(highs) + 14) / 10)
+    # -- shared, nicely-rounded y-range -----------------------------------
+    lo = min([float((mu - ci).min()) for _, mu, ci, _ in runs]
+             + [v - h for _, _, _, st in runs for v, h in st.values()])
+    hi = max([float((mu + ci).max()) for _, mu, ci, _ in runs]
+             + [v + h for _, _, _, st in runs for v, h in st.values()])
+    y0 = 10 * np.floor((lo - 4) / 10)
+    y1 = 10 * np.ceil((hi + 12) / 10)
 
-    # IEEE-friendly, grayscale-safe (Okabe–Ito blue + neutral grays)
-    BLUE, GRAY_BAR, REF = "#0072B2", "#C9CDD2", "#333333"
-    DASH = (0, (5, 2.4))
+    # -- palette: one muted accent + neutral grays, colour-blind & B/W safe
+    ACCENT, NEUTRAL, REF = "#1f5c99", "#8c9196", "#333333"
+    BAND = "#cfe0f0"
+    DASH = (0, (5.5, 2.5))
     rc = {
         "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "Nimbus Roman",
-                       "STIXGeneral"],
+        "font.serif": ["Times New Roman", "Times", "Nimbus Roman No9 L",
+                       "STIXGeneral", "DejaVu Serif"],
         "mathtext.fontset": "stix",
-        "font.size": 8, "axes.labelsize": 8, "axes.titlesize": 8,
-        "xtick.labelsize": 7, "ytick.labelsize": 7, "legend.fontsize": 6.5,
+        "font.size": 8, "axes.labelsize": 8.5, "axes.titlesize": 8.5,
+        "xtick.labelsize": 7.5, "ytick.labelsize": 7.5, "legend.fontsize": 7,
         "xtick.direction": "out", "ytick.direction": "out",
-        "axes.linewidth": 0.6,
-        "xtick.major.width": 0.6, "ytick.major.width": 0.6,
-        "xtick.major.size": 2.5, "ytick.major.size": 2.5,
-        "svg.fonttype": "none",
+        "axes.linewidth": 0.7,
+        "xtick.major.width": 0.7, "ytick.major.width": 0.7,
+        "xtick.minor.width": 0.5,
+        "xtick.major.size": 3.0, "ytick.major.size": 3.0,
+        "xtick.minor.size": 1.8,
+        "lines.solid_capstyle": "round", "svg.fonttype": "none",
     }
     with plt.rc_context(rc):
-        fig, (ax, axb) = plt.subplots(
-            1, 2, figsize=(COL_W, 2.3), sharey=True,
-            gridspec_kw={"width_ratios": [1.7, 1.0], "wspace": 0.05})
-        for a in (ax, axb):
-            a.set_axisbelow(True)
-            a.grid(axis="y", lw=0.5, alpha=0.25)
-            a.spines["top"].set_visible(False)
-            a.spines["right"].set_visible(False)
-            a.set_ylim(y0, y1)
-            if ref_val is not None:
-                a.axhspan(ref_val, y1, color="0.45", alpha=0.09, lw=0,
-                          zorder=0)
-                a.axhline(ref_val, ls=DASH, lw=1.3, color=REF, zorder=2)
+        fig, (axA, axB) = plt.subplots(
+            1, 2, figsize=(COL_W, 2.5), sharey=True,
+            gridspec_kw={"width_ratios": [1.78, 1.0], "wspace": 0.06})
 
-        # ---- (a) noise-scale sweep -----------------------------------
-        for name, sc, tv, ci, _ in runs:
-            lbl = "MAPPO (proxy)" if len(runs) == 1 else name[:18]
-            ax.fill_between(sc, tv - ci, tv + ci, color=BLUE, alpha=0.14,
-                            lw=0, zorder=1)
-            ax.plot(sc, tv, color=BLUE, lw=1.6, marker="o", ms=3.6,
-                    mfc=BLUE, mec="white", mew=0.6, zorder=3, label=lbl,
-                    clip_on=False)
-        if ref_val is not None:
-            ax.plot([], [], ls=DASH, lw=1.3, color=REF,
-                    label=f"{ref_name.capitalize()} (best deployable)")
-            ax.text(0.03, 0.97, "worse than baseline",
-                    transform=ax.transAxes, ha="left", va="top",
-                    fontsize=6, style="italic", color="0.35")
-        ax.set_xlim(-0.08, 2.08)
-        ax.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
-        ax.set_xlabel("Noise scale (×)")
-        ax.set_ylabel("Mean travel time (s)")
-        ax.set_title(r"$\mathbf{(a)}$ Noise-scale sweep", loc="left", pad=4)
-        ax.legend(loc="lower left", frameon=False, handlelength=1.9,
-                  borderaxespad=0.2)
+        # common frame for both panels --------------------------------
+        for ax in (axA, axB):
+            ax.set_ylim(y0, y1)
+            ax.set_axisbelow(True)
+            ax.grid(axis="y", lw=0.5, color="0.9", zorder=0)
+            ax.spines["top"].set_visible(False)
+            ax.spines["right"].set_visible(False)
+            ax.yaxis.set_major_locator(MultipleLocator(20))
+            ax.axhspan(ref_val, y1, color="0.5", alpha=0.055, lw=0, zorder=0)
+            ax.axhline(ref_val, ls=DASH, lw=1.2, color=REF, zorder=2)
 
-        # ---- (b) structural failures ----------------------------------
+        # ---- panel (a): the noise-scale sweep -----------------------
+        for sc, mu, ci, _ in runs:
+            axA.fill_between(sc, mu - ci, mu + ci, color=BAND, alpha=0.85,
+                             lw=0, zorder=1)
+        for sc, mu, ci, _ in runs:
+            axA.plot(sc, mu, color=ACCENT, lw=1.9, marker="o", ms=4.2,
+                     mfc=ACCENT, mec="white", mew=0.8, zorder=4,
+                     clip_on=False)
+        axA.text(0.028, 0.965, "worse than baseline", transform=axA.transAxes,
+                 ha="left", va="top", fontsize=6.5, style="italic",
+                 color="0.4")
+        axA.set_xlim(-0.06, 2.06)
+        axA.set_xticks([0, 0.5, 1.0, 1.5, 2.0])
+        axA.xaxis.set_minor_locator(MultipleLocator(0.25))
+        axA.set_xlabel(r"Noise-envelope scale ($\times$ calibrated)")
+        axA.set_ylabel("Mean travel time (s)")
+        axA.set_title(r"$\mathbf{(a)}$  Noise magnitude", loc="left", pad=5)
+
+        # ---- panel (b): structural failures (dot + 95% CI) ----------
+        order = ["clean", "delay_1step", "dropout_approach0"]
+        ticks, ticklab = [], []
         nb = len(runs)
-        width = 0.55 / nb
-        for i, (name, _, _, _, structural) in enumerate(runs):
-            off = (i - (nb - 1) / 2) * width
-            for cond, (xpos, _lab) in struct_slots.items():
-                if cond not in structural:
+        for xi, cond in enumerate(order):
+            ticks.append(xi)
+            ticklab.append("Clean" if cond == "clean" else STRUCT[cond][1])
+            for i, (_, _, _, struct) in enumerate(runs):
+                if cond not in struct:
                     continue
-                v, c = structural[cond]
-                axb.bar(xpos + off, v, width=width * 0.92,
-                        color=GRAY_BAR if cond == "clean" else BLUE,
-                        alpha=1.0 if cond == "clean" else 0.88,
-                        edgecolor="0.15", lw=0.6, zorder=2)
-                axb.errorbar(xpos + off, v, yerr=c, fmt="none",
-                             ecolor="0.15", elinewidth=0.8, capsize=2.2,
-                             capthick=0.8, zorder=3)
+                v, h = struct[cond]
+                dx = 0.0 if nb == 1 else (i - (nb - 1) / 2) * 0.16
+                is_clean = cond == "clean"
+                mk = "o" if is_clean else STRUCT[cond][0]
+                col = NEUTRAL if is_clean else ACCENT
+                axB.errorbar(xi + dx, v, yerr=h, fmt=mk, ms=6.0, color=col,
+                             mfc=col, mec="white", mew=0.8, ecolor="0.35",
+                             elinewidth=0.9, capsize=3.0, capthick=0.9,
+                             zorder=4, clip_on=False)
                 if nb == 1:
-                    axb.annotate(f"{v:.0f}", (xpos, v + c),
-                                 textcoords="offset points", xytext=(0, 3),
-                                 ha="center", va="bottom", fontsize=6.5,
-                                 color="0.1", zorder=5,
-                                 bbox=dict(fc="white", ec="none",
-                                           pad=0.4, alpha=0.85))
-        axb.set_xlim(-0.62, 2.62)
-        axb.set_xticks([s[0] for s in struct_slots.values()])
-        axb.set_xticklabels([s[1] for s in struct_slots.values()],
-                            fontsize=6.5)
-        axb.set_title(r"$\mathbf{(b)}$ Structural failures", loc="left",
-                      pad=4)
-        axb.tick_params(axis="y", length=0)
+                    axB.annotate(f"{v:.0f}", (xi, v + h),
+                                 textcoords="offset points", xytext=(0, 4.5),
+                                 ha="center", va="bottom", fontsize=7,
+                                 color="0.12", zorder=6,
+                                 bbox=dict(boxstyle="round,pad=0.12",
+                                           fc="white", ec="none", alpha=0.9))
+        axB.set_xlim(-0.55, 2.55)
+        axB.set_xticks(ticks)
+        axB.set_xticklabels(ticklab, fontsize=7)
+        axB.set_title(r"$\mathbf{(b)}$  Structural failures", loc="left",
+                      pad=5)
+        axB.tick_params(axis="y", length=0)
+
+        # ---- shared legend beneath both panels ----------------------
+        handles = [
+            Line2D([0], [0], color=ACCENT, lw=1.9, marker="o", ms=4.2,
+                   mfc=ACCENT, mec="white", mew=0.8, label="MAPPO proxy (mean)"),
+            Patch(fc=BAND, ec="none", label="95% CI (5 seeds)"),
+            Line2D([0], [0], color=REF, lw=1.2, ls=DASH,
+                   label=f"{ref_name.capitalize()} (best deployable)"),
+        ]
+        fig.subplots_adjust(bottom=0.30)
+        fig.legend(handles=handles, loc="lower center", ncol=3, frameon=False,
+                   bbox_to_anchor=(0.5, -0.02), columnspacing=1.6,
+                   handlelength=2.1, handletextpad=0.5)
 
         for ext, kw in (("pdf", {}), ("svg", {}), ("png", {"dpi": 600})):
             out = OUT_DIR / f"noise_robustness.{ext}"
