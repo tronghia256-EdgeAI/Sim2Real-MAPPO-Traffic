@@ -1,7 +1,7 @@
 <configuration>
     <input>
         <net-file value="intersections.net.xml"/>
-        <route-files value="demand_eval.rou.xml"/>
+        <route-files value="demand_moto50.rou.xml"/>
         <additional-files value="vtypes_moto50.add.xml"/>
     </input>
     <processing>

@@ -16,8 +16,10 @@ generalization:
   2. Motorcycle-share sweep {50, 73, 90}% (the formal sensitivity defense of the
      central 73% mix; 73 = the training value, regenerated for symmetry). Other
      classes keep their original proportions, rescaled to fill 1 - moto.
-        -> vtypes_moto<pct>.add.xml + sumo_config_moto<pct>.sumocfg
-        (these reuse the held-out demand_eval.rou.xml; only the vehicle mix changes)
+        -> vtypes_moto<pct>.add.xml + demand_moto<pct>.rou.xml
+           + sumo_config_moto<pct>.sumocfg
+        (each mix is re-routed from demand_eval.trips.xml with its own vtypes;
+         reusing demand_eval.rou.xml would freeze the 73% per-vehicle types)
 
 Rates scale by n_entries/6 like generate_demand (per-approach load parity).
 Routing uses duarouter when available, else trips-as-routes (SUMO online routing).
@@ -125,14 +127,16 @@ def gen_ood_demand(name: str, seed: int, scale_arg: str) -> None:
         print(f"  [OK] ood_{profile}: {n} veh (rate {rate*scale:.2f} veh/s{' ASYM' if asym else ''})")
 
 
-def gen_moto_sweep(name: str) -> None:
+def gen_moto_sweep(name: str, seed: int = 42) -> None:
     net_dir = NETWORKS_DIR / name
+    net_path = net_dir / "intersections.net.xml"
     base_vtypes = net_dir / "vtypes.add.xml"
     if not base_vtypes.exists():
         raise FileNotFoundError(f"{base_vtypes} missing")
-    eval_rou = net_dir / "demand_eval.rou.xml"
-    route_ref = "demand_eval.rou.xml" if eval_rou.exists() else "demand_train.rou.xml"
-    print(f"\n=== {name} motorcycle-share sweep (demand={route_ref}) ===")
+    trips = net_dir / "demand_eval.trips.xml"
+    if not trips.exists():
+        trips = net_dir / "demand_train.trips.xml"
+    print(f"\n=== {name} motorcycle-share sweep (trips={trips.name}) ===")
 
     other_sum = sum(BASE_OTHER.values())
     for pct in MOTO_PCTS:
@@ -148,8 +152,19 @@ def gen_moto_sweep(name: str) -> None:
                 vt.set("probability", f"{probs[vid]:.4f}")
         out_vtypes = net_dir / f"vtypes_moto{pct}.add.xml"
         tree.write(out_vtypes, encoding="utf-8", xml_declaration=False)
+
+        # Each mix must be RE-ROUTED with its own vtypes: duarouter resolves the
+        # type distribution into concrete per-vehicle types at routing time, so
+        # pointing the cfg at demand_eval.rou.xml (pre-2026-07-06 behavior) froze
+        # the 73% mix regardless of which vtypes file the cfg loaded. Departures
+        # and OD pairs stay identical across mixes (same trips file).
+        rou = net_dir / f"demand_moto{pct}.rou.xml"
+        if not route_with_duarouter(net_path, trips, out_vtypes, rou, seed + 3000 + pct):
+            # trips keep type="mixed_traffic", so SUMO samples the mix at load time
+            shutil.copyfile(trips, rou)
+            print(f"  [WARN] moto{pct}: duarouter unavailable — trips-as-routes")
         _write_cfg(net_dir / f"sumo_config_moto{pct}.sumocfg",
-                   route_ref, f"vtypes_moto{pct}.add.xml")
+                   f"demand_moto{pct}.rou.xml", f"vtypes_moto{pct}.add.xml")
         print(f"  [OK] moto{pct}: probs=" +
               " ".join(f"{k}={v:.3f}" for k, v in probs.items()))
 
@@ -198,7 +213,7 @@ def main() -> None:
         if not args.skip_ood:
             gen_ood_demand(name, args.seed, args.scale)
         if not args.skip_moto:
-            gen_moto_sweep(name)
+            gen_moto_sweep(name, args.seed)
         if not args.skip_lanebased:
             gen_lanebased_cfgs(name)
     print("\nDone. Evaluate each generated sumo_config_*.sumocfg with eval_compare "
