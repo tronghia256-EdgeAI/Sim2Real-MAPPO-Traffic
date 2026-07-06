@@ -73,6 +73,46 @@ def _setup_mpl():
 
 
 # ---------------------------------------------------------------------------
+# Shared publication style (IEEE Transactions, single/double column)
+# ---------------------------------------------------------------------------
+# One muted accent + neutral grays; colour-blind and grayscale safe.
+ACCENT, NEUTRAL, REF_C = "#1f5c99", "#8c9196", "#333333"
+BAND = "#cfe0f0"
+DASH = (0, (5.5, 2.5))
+PUB_RC = {
+    "font.family": "serif",
+    "font.serif": ["Times New Roman", "Times", "Nimbus Roman No9 L",
+                   "STIXGeneral", "DejaVu Serif"],
+    "mathtext.fontset": "stix",
+    "font.size": 8, "axes.labelsize": 8.5, "axes.titlesize": 8.5,
+    "xtick.labelsize": 7.5, "ytick.labelsize": 7.5, "legend.fontsize": 7,
+    "xtick.direction": "out", "ytick.direction": "out",
+    "axes.linewidth": 0.7,
+    "xtick.major.width": 0.7, "ytick.major.width": 0.7,
+    "xtick.minor.width": 0.5,
+    "xtick.major.size": 3.0, "ytick.major.size": 3.0,
+    "xtick.minor.size": 1.8,
+    "lines.solid_capstyle": "round", "svg.fonttype": "none",
+}
+
+
+def _pub_frame(ax) -> None:
+    """Common axes frame: no top/right spines, faint horizontal grid."""
+    ax.set_axisbelow(True)
+    ax.grid(axis="y", lw=0.5, color="0.9", zorder=0)
+    ax.spines["top"].set_visible(False)
+    ax.spines["right"].set_visible(False)
+
+
+def _save_pub(fig, stem: str) -> None:
+    """Vector PDF (goes into the paper) + SVG + 600-dpi PNG preview."""
+    for ext, kw in (("pdf", {}), ("svg", {}), ("png", {"dpi": 600})):
+        out = OUT_DIR / f"{stem}.{ext}"
+        fig.savefig(out, bbox_inches="tight", **kw)
+        print(f"[fig] saved {out}")
+
+
+# ---------------------------------------------------------------------------
 # Discovery
 # ---------------------------------------------------------------------------
 
@@ -202,47 +242,85 @@ def _multiseed_band(
 # Figures
 # ---------------------------------------------------------------------------
 
+# arm -> (colour, linestyle, label). Hues match the sec6 caption (blue proxy,
+# purple privileged, orange IPPO) but muted; linestyles keep them apart in B/W.
+ARM_PUB = {
+    "mappo_proxy":      (ACCENT,    "-",  "MAPPO proxy (ours)"),
+    "mappo_privileged": ("#8064a2", "--", "MAPPO privileged"),
+    "ippo_proxy":       ("#c8702a", "-.", "IPPO proxy"),
+}
+_ARM_DRAW_ORDER = ["ippo_proxy", "mappo_privileged", "mappo_proxy"]
+
+
 def fig_convergence(campaign_dir: Path) -> None:
-    plt = _setup_mpl()
+    """FIG (VI-C): mean episode reward vs steps, mean + 95% CI over seeds.
+
+    Rendered at single-column width because the paper includes it at
+    \\columnwidth — rendering wider and letting LaTeX shrink it would scale
+    every font below the readable minimum.
+    """
+    _setup_mpl()
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+
     runs = discover_runs(campaign_dir)
     if not runs:
-        print("[fig] convergence: no tblogs found — skip")
+        print("[fig] convergence: no tblogs found -- skip")
         return
     networks = sorted({net for (net, _, _) in runs})
-    fig, axes = plt.subplots(1, len(networks), figsize=(PAGE_W, 2.8), squeeze=False)
-    for ax, net in zip(axes[0], networks):
-        plotted = False
-        for (n, algo, obs), job_dirs in sorted(runs.items()):
-            if n != net:
-                continue
-            band = _multiseed_band(job_dirs, "train_episodes.csv",
-                                   "global_step", "mean_reward")
-            if band is None:
-                continue
-            grid, mean, std = band
-            arm = f"{algo}_{obs}"
-            color = ARM_COLORS.get(arm, None)
-            ax.plot(grid / 1e3, mean, color=color, label=f"{arm} (n={len(job_dirs)})")
-            ax.fill_between(grid / 1e3, mean - std, mean + std, color=color, alpha=0.2, linewidth=0)
-            plotted = True
-        ax.set_title(net)
-        ax.set_xlabel("Global step (×10³)")
-        ax.set_ylabel("Mean episode reward")
-        ax.grid(True)
-        if plotted:
-            ax.legend(loc="lower right")
-    fig.tight_layout()
-    out = OUT_DIR / "convergence.pdf"
-    fig.savefig(out, bbox_inches="tight", dpi=300)
-    plt.close(fig)
-    print(f"[fig] saved {out}")
+    with plt.rc_context(PUB_RC):
+        width = COL_W if len(networks) == 1 else PAGE_W
+        fig, axes = plt.subplots(1, len(networks), figsize=(width, 2.4),
+                                 squeeze=False)
+        for ax, net in zip(axes[0], networks):
+            _pub_frame(ax)
+            plotted = False
+            arms = {f"{algo}_{obs}": jd for (n, algo, obs), jd in runs.items()
+                    if n == net}
+            order = [a for a in _ARM_DRAW_ORDER if a in arms]
+            order += [a for a in sorted(arms) if a not in order]
+            for arm in order:
+                job_dirs = arms[arm]
+                band = _multiseed_band(job_dirs, "train_episodes.csv",
+                                       "global_step", "mean_reward")
+                if band is None:
+                    continue
+                grid, mean, std = band
+                half = 1.96 * std / np.sqrt(max(len(job_dirs), 1))  # 95% CI
+                col, ls, lab = ARM_PUB.get(arm, (NEUTRAL, "-", arm))
+                ax.fill_between(grid / 1e3, mean - half, mean + half,
+                                color=col, alpha=0.15, lw=0, zorder=1)
+                ax.plot(grid / 1e3, mean, color=col, ls=ls, lw=1.5,
+                        zorder=3, label=lab)
+                plotted = True
+            if len(networks) > 1:
+                ax.set_title(net, loc="left")
+            ax.set_xlabel(r"Environment steps ($\times 10^3$)")
+            ax.xaxis.set_minor_locator(MultipleLocator(25))
+            ax.margins(x=0.02)
+            if plotted:
+                hh, ll = ax.get_legend_handles_labels()
+                ax.legend(hh[::-1], ll[::-1], loc="lower right",
+                          frameon=False, handlelength=2.4,
+                          borderaxespad=0.3)
+        axes[0][0].set_ylabel("Mean episode reward")
+        fig.tight_layout(pad=0.4)
+        _save_pub(fig, "convergence")
+        plt.close(fig)
 
 
 def fig_losses(campaign_dir: Path, arm: str = "mappo_proxy") -> None:
-    plt = _setup_mpl()
+    """Appendix diagnostics, 2x2 at single-column width (the paper includes it
+    at \\columnwidth): policy loss / value loss (log) / entropy / approx KL,
+    each a single accent line + 95% CI band over seeds. No suptitle — the
+    LaTeX caption carries the description."""
+    _setup_mpl()
+    import matplotlib.pyplot as plt
+    from matplotlib.ticker import MultipleLocator
+
     tblogs = campaign_dir / "tblogs"
     if not tblogs.exists():
-        print("[fig] losses: no tblogs — skip")
+        print("[fig] losses: no tblogs -- skip")
         return
     algo, obs = arm.split("_", 1)
     upd_jobs: List[Path] = []
@@ -252,41 +330,49 @@ def fig_losses(campaign_dir: Path, arm: str = "mappo_proxy") -> None:
             if list(job_dir.glob("**/train_updates.csv")):
                 upd_jobs.append(job_dir)
     if not upd_jobs:
-        print(f"[fig] losses: no train_updates.csv for {arm} — skip")
+        print(f"[fig] losses: no train_updates.csv for {arm} -- skip")
         return
 
-    # Clean 2x2 grid: one metric per panel, single blue mean line + std band.
-    # (Previous layout overlaid approx-KL on the entropy panel via a twinx orange
-    # axis — visually cluttered; KL now gets its own panel with the target line.)
-    fig, axes = plt.subplots(2, 2, figsize=(PAGE_W, 4.6), constrained_layout=True)
     specs = [("policy_loss", "Policy loss", False, None),
              ("value_loss", "Value loss", True, None),
              ("entropy", "Entropy", False, None),
-             ("approx_kl", "Approx KL", False, 0.015)]
-    for ax, (key, label, logy, hline) in zip(axes.flat, specs):
-        band = _multiseed_band(upd_jobs, "train_updates.csv", "global_step", key, smooth_w=50)
-        if band is None:
-            ax.set_visible(False)
-            continue
-        grid, mean, std = band
-        ax.plot(grid / 1e3, mean, color="#1565c0", linewidth=1.3)
-        ax.fill_between(grid / 1e3, mean - std, mean + std, color="#90caf9", alpha=0.3, linewidth=0)
-        if hline is not None:
-            ax.axhline(hline, color="#c62828", linestyle="--", linewidth=0.9,
-                       label=f"target {hline}")
-            ax.legend(loc="upper right", fontsize=7, frameon=False)
-        if logy:
-            ax.set_yscale("log")
-        ax.set_xlabel("Global step (×10³)")
-        ax.set_ylabel(label)
-        ax.set_title(label)
-        ax.grid(True, alpha=0.3)
-    fig.suptitle(f"Training diagnostics ({arm}, mean over {len(upd_jobs)} seeds)",
-                 fontsize=10)
-    out = OUT_DIR / "training_losses.pdf"
-    fig.savefig(out, dpi=300)
-    plt.close(fig)
-    print(f"[fig] saved {out}")
+             ("approx_kl", "Approx. KL", False, 0.015)]
+    with plt.rc_context(PUB_RC):
+        fig, axes = plt.subplots(2, 2, figsize=(COL_W, 3.0),
+                                 constrained_layout=True)
+        for k, (ax, (key, label, logy, hline)) in enumerate(
+                zip(axes.flat, specs)):
+            band = _multiseed_band(upd_jobs, "train_updates.csv",
+                                   "global_step", key, smooth_w=50)
+            if band is None:
+                ax.set_visible(False)
+                continue
+            grid, mean, std = band
+            half = 1.96 * std / np.sqrt(max(len(upd_jobs), 1))  # 95% CI
+            _pub_frame(ax)
+            ax.fill_between(grid / 1e3, mean - half, mean + half,
+                            color=BAND, alpha=0.85, lw=0, zorder=1)
+            ax.plot(grid / 1e3, mean, color=ACCENT, lw=1.3, zorder=3)
+            if hline is not None:
+                ax.axhline(hline, color=REF_C, ls=DASH, lw=0.9, zorder=2)
+                ax.text(0.97, 0.915, f"target {hline}",
+                        transform=ax.transAxes, ha="right", va="top",
+                        fontsize=6.5, color=REF_C)
+            if logy:
+                ax.set_yscale("log")
+                title = label + " (log)"
+            else:
+                title = label
+            ax.set_title(rf"$\mathbf{{({'abcd'[k]})}}$ {title}",
+                         loc="left", pad=3, fontsize=8)
+            ax.tick_params(labelsize=7)
+            ax.xaxis.set_major_locator(MultipleLocator(100))
+            ax.xaxis.set_minor_locator(MultipleLocator(50))
+            ax.margins(x=0.02)
+            if k >= 2:  # bottom row only
+                ax.set_xlabel(r"Steps ($\times 10^3$)", fontsize=7.5)
+        _save_pub(fig, "training_losses")
+        plt.close(fig)
 
 
 def _load_summaries() -> List[dict]:
@@ -301,17 +387,19 @@ def _load_summaries() -> List[dict]:
     return [json.loads(p.read_text(encoding="utf-8")) for p in by_net.values()]
 
 
-# Per-method palette (consistent across panels). Baselines muted greys/earth
-# tones; the RL methods get saturated colours so "ours" reads at a glance.
+# Per-method style (consistent across panels): (fill, hatch, label).
+# Baselines form a light->dark neutral ramp (self-ordering in grayscale);
+# the two secondary learned arms add hatches so B/W print still separates
+# them; ours is the single strong accent.
 METHOD_STYLE = {
-    "fixed":       ("#bdbdbd", "Fixed-Time"),
-    "webster":     ("#9e9e9e", "Webster"),
-    "actuated":    ("#78909c", "Actuated"),
-    "sotl":        ("#a1887f", "SOTL"),
-    "maxpressure": ("#4db6ac", "MaxPressure"),
-    "ippo":        ("#e65100", "IPPO"),
-    "privileged":  ("#6a1b9a", "MAPPO-priv"),
-    "mappo":       ("#1565c0", "MAPPO (ours)"),
+    "fixed":       ("#d9dcdf", None,   "Fixed-Time"),
+    "webster":     ("#bfc4c9", None,   "Webster"),
+    "actuated":    ("#a3aab1", None,   "Actuated"),
+    "sotl":        ("#878f97", None,   "SOTL"),
+    "maxpressure": ("#6b737b", None,   "MaxPressure"),
+    "ippo":        ("#dfa76a", "///",  "IPPO"),
+    "privileged":  ("#a891c4", "\\\\\\", "MAPPO-priv."),
+    "mappo":       (ACCENT,    None,   "MAPPO (ours)"),
 }
 # canonical left-to-right ordering (baselines first, ours last so it stands out)
 METHOD_ORDER = ["fixed", "webster", "actuated", "sotl", "maxpressure",
@@ -325,10 +413,18 @@ def _ordered_methods(aggregates) -> list:
 
 
 def fig_comparison() -> None:
-    plt = _setup_mpl()
+    """FIG-4 (VI-A, figure*): grouped bars, one panel per metric with its own
+    y-scale. Bars start at zero (honest length encoding), 95% CI whiskers,
+    ours + privileged outlined, a dark triangle marks the best method per
+    panel (both conventions are stated in the LaTeX caption). No suptitle —
+    the caption carries the description."""
+    _setup_mpl()
+    import matplotlib.pyplot as plt
+    from matplotlib.transforms import offset_copy
+
     summaries = _load_summaries()
     if not summaries:
-        print("[fig] comparison: no eval_tables/*/summary.json — skip")
+        print("[fig] comparison: no eval_tables/*/summary.json -- skip")
         return
     for summary in summaries:
         scen = summary.get("scenario", "scenario")
@@ -336,43 +432,51 @@ def fig_comparison() -> None:
         methods = _ordered_methods(aggregates)
         metrics = [m for m in METRIC_KEYS if m != "n_trips"]
 
-        # one panel per metric → each gets its own y-scale so P95 (~500-800s)
-        # no longer squashes Waiting (~140s).
-        fig, axes = plt.subplots(1, len(metrics), figsize=(PAGE_W, 2.7))
-        x = np.arange(len(methods))
-        handles: dict = {}
-        for ax, m in zip(axes, metrics):
-            means = [aggregates[mm].get(m, {}).get("mean", np.nan) for mm in methods]
-            cis = [aggregates[mm].get(m, {}).get("ci95", 0.0) for mm in methods]
-            best = int(np.nanargmin(means)) if np.any(np.isfinite(means)) else -1
-            for i, mm in enumerate(methods):
-                color, label = METHOD_STYLE.get(mm, ("#607d8b", mm))
-                is_ours = mm in ("mappo", "privileged")
-                bar = ax.bar(
-                    x[i], means[i], 0.78, yerr=cis[i], capsize=2,
-                    color=color, edgecolor="black",
-                    linewidth=1.1 if is_ours else 0.4,
-                    error_kw={"elinewidth": 0.7, "capthick": 0.7},
-                )
-                handles.setdefault(label, bar)
-                if i == best:  # mark the winner per metric
-                    ax.plot(x[i], means[i] + cis[i], marker="v", ms=4,
-                            color="#2e7d32", clip_on=False)
-            ax.set_title(METRIC_LABELS[m])
-            ax.set_xticks([])
-            ax.grid(True, axis="y")
-            ax.margins(y=0.15)
-        axes[0].set_ylabel("seconds (lower is better)")
-        fig.legend(handles.values(), handles.keys(), loc="lower center",
-                   ncol=len(handles), fontsize=6.5, frameon=False,
-                   bbox_to_anchor=(0.5, -0.02))
-        fig.suptitle(f"Controller comparison — {scen}  (▼ = best, 95% CI)",
-                     fontsize=9)
-        fig.tight_layout(rect=(0, 0.06, 1, 0.94))
-        out = OUT_DIR / f"comparison_{scen}.pdf"
-        fig.savefig(out, dpi=300)
-        plt.close(fig)
-        print(f"[fig] saved {out}")
+        with plt.rc_context(PUB_RC):
+            fig, axes = plt.subplots(1, len(metrics), figsize=(PAGE_W, 2.1))
+            x = np.arange(len(methods))
+            handles: dict = {}
+            for k, (ax, m) in enumerate(zip(axes, metrics)):
+                _pub_frame(ax)
+                means = [aggregates[mm].get(m, {}).get("mean", np.nan)
+                         for mm in methods]
+                cis = [aggregates[mm].get(m, {}).get("ci95", 0.0)
+                       for mm in methods]
+                best = (int(np.nanargmin(means))
+                        if np.any(np.isfinite(means)) else -1)
+                for i, mm in enumerate(methods):
+                    fill, hatch, label = METHOD_STYLE.get(
+                        mm, (NEUTRAL, None, mm))
+                    is_ours = mm in ("mappo", "privileged")
+                    bar = ax.bar(
+                        x[i], means[i], 0.8, yerr=cis[i], capsize=1.8,
+                        color=fill, hatch=hatch, edgecolor="black",
+                        linewidth=1.0 if is_ours else 0.4, zorder=2,
+                        error_kw={"elinewidth": 0.7, "capthick": 0.7,
+                                  "ecolor": "0.2"},
+                    )
+                    handles.setdefault(label, bar)
+                    if i == best:  # winner per metric (dark, colour-neutral)
+                        tr = offset_copy(ax.transData, fig=fig, x=0, y=5,
+                                         units="points")
+                        ax.plot(x[i], means[i] + cis[i], marker="v", ms=3.6,
+                                color="0.15", transform=tr, clip_on=False,
+                                zorder=5)
+                ax.set_title(rf"$\mathbf{{({'abcd'[k]})}}$ "
+                             f"{METRIC_LABELS[m]}", loc="left", pad=4,
+                             fontsize=8)
+                ax.set_xticks([])
+                ax.tick_params(labelsize=7)
+                ax.margins(y=0.14)
+                ax.set_ylim(bottom=0)
+            axes[0].set_ylabel("Seconds (lower is better)", fontsize=7.5)
+            fig.subplots_adjust(bottom=0.16, wspace=0.3)
+            fig.legend(handles.values(), handles.keys(), loc="lower center",
+                       ncol=len(handles), frameon=False,
+                       bbox_to_anchor=(0.5, -0.04), columnspacing=1.1,
+                       handlelength=1.4, handletextpad=0.45)
+            _save_pub(fig, f"comparison_{scen}")
+            plt.close(fig)
 
 
 def fig_restriction_cost() -> None:
@@ -496,40 +600,18 @@ def fig_noise() -> None:
     y0 = 10 * np.floor((lo - 4) / 10)
     y1 = 10 * np.ceil((hi + 12) / 10)
 
-    # -- palette: one muted accent + neutral grays, colour-blind & B/W safe
-    ACCENT, NEUTRAL, REF = "#1f5c99", "#8c9196", "#333333"
-    BAND = "#cfe0f0"
-    DASH = (0, (5.5, 2.5))
-    rc = {
-        "font.family": "serif",
-        "font.serif": ["Times New Roman", "Times", "Nimbus Roman No9 L",
-                       "STIXGeneral", "DejaVu Serif"],
-        "mathtext.fontset": "stix",
-        "font.size": 8, "axes.labelsize": 8.5, "axes.titlesize": 8.5,
-        "xtick.labelsize": 7.5, "ytick.labelsize": 7.5, "legend.fontsize": 7,
-        "xtick.direction": "out", "ytick.direction": "out",
-        "axes.linewidth": 0.7,
-        "xtick.major.width": 0.7, "ytick.major.width": 0.7,
-        "xtick.minor.width": 0.5,
-        "xtick.major.size": 3.0, "ytick.major.size": 3.0,
-        "xtick.minor.size": 1.8,
-        "lines.solid_capstyle": "round", "svg.fonttype": "none",
-    }
-    with plt.rc_context(rc):
+    with plt.rc_context(PUB_RC):
         fig, (axA, axB) = plt.subplots(
             1, 2, figsize=(COL_W, 2.5), sharey=True,
             gridspec_kw={"width_ratios": [1.78, 1.0], "wspace": 0.06})
 
         # common frame for both panels --------------------------------
         for ax in (axA, axB):
+            _pub_frame(ax)
             ax.set_ylim(y0, y1)
-            ax.set_axisbelow(True)
-            ax.grid(axis="y", lw=0.5, color="0.9", zorder=0)
-            ax.spines["top"].set_visible(False)
-            ax.spines["right"].set_visible(False)
             ax.yaxis.set_major_locator(MultipleLocator(20))
             ax.axhspan(ref_val, y1, color="0.5", alpha=0.055, lw=0, zorder=0)
-            ax.axhline(ref_val, ls=DASH, lw=1.2, color=REF, zorder=2)
+            ax.axhline(ref_val, ls=DASH, lw=1.2, color=REF_C, zorder=2)
 
         # ---- panel (a): the noise-scale sweep -----------------------
         for sc, mu, ci, _ in runs:
@@ -587,7 +669,7 @@ def fig_noise() -> None:
             Line2D([0], [0], color=ACCENT, lw=1.9, marker="o", ms=4.2,
                    mfc=ACCENT, mec="white", mew=0.8, label="MAPPO proxy (mean)"),
             Patch(fc=BAND, ec="none", label="95% CI (5 seeds)"),
-            Line2D([0], [0], color=REF, lw=1.2, ls=DASH,
+            Line2D([0], [0], color=REF_C, lw=1.2, ls=DASH,
                    label=f"{ref_name.capitalize()} (best deployable)"),
         ]
         fig.subplots_adjust(bottom=0.30)
@@ -595,10 +677,7 @@ def fig_noise() -> None:
                    bbox_to_anchor=(0.5, -0.02), columnspacing=1.6,
                    handlelength=2.1, handletextpad=0.5)
 
-        for ext, kw in (("pdf", {}), ("svg", {}), ("png", {"dpi": 600})):
-            out = OUT_DIR / f"noise_robustness.{ext}"
-            fig.savefig(out, bbox_inches="tight", **kw)
-            print(f"[fig] saved {out}")
+        _save_pub(fig, "noise_robustness")
         plt.close(fig)
 
 
