@@ -1,0 +1,143 @@
+nohup: ignoring input
+
+Scenario: n3_grid (eval) | 16 TLS | 5 seeds | methods: mappo, webster, actuated, maxpressure, sotl, fixed
+
+--- mappo ---
+  5 checkpoint(s) x 5 eval seeds
+ Retrying in 1 seconds
+  mappo[0]     seed=42    | travel=  132.9s wait=  26.0s p95=  66.0s trips=5537
+ Retrying in 1 seconds
+  mappo[0]     seed=123   | travel=  131.1s wait=  25.9s p95=  66.0s trips=5543
+ Retrying in 1 seconds
+  mappo[0]     seed=456   | travel=  131.5s wait=  25.5s p95=  65.0s trips=5536
+ Retrying in 1 seconds
+  mappo[0]     seed=789   | travel=  133.3s wait=  26.6s p95=  66.0s trips=5547
+ Retrying in 1 seconds
+  mappo[0]     seed=1337  | travel=  133.7s wait=  26.9s p95=  67.0s trips=5541
+ Retrying in 1 seconds
+  mappo[1]     seed=42    | travel=  130.5s wait=  24.0s p95=  60.0s trips=5541
+ Retrying in 1 seconds
+  mappo[1]     seed=123   | travel=  129.0s wait=  23.7s p95=  60.0s trips=5544
+ Retrying in 1 seconds
+  mappo[1]     seed=456   | travel=  130.2s wait=  24.0s p95=  60.0s trips=5543
+ Retrying in 1 seconds
+  mappo[1]     seed=789   | travel=  130.2s wait=  23.5s p95=  60.0s trips=5545
+ Retrying in 1 seconds
+  mappo[1]     seed=1337  | travel=  130.8s wait=  24.0s p95=  61.0s trips=5543
+ Retrying in 1 seconds
+  mappo[2]     seed=42    | travel=  136.9s wait=  30.4s p95=  81.0s trips=5530
+ Retrying in 1 seconds
+  mappo[2]     seed=123   | travel=  134.9s wait=  29.9s p95=  81.0s trips=5542
+ Retrying in 1 seconds
+  mappo[2]     seed=456   | travel=  136.5s wait=  30.6s p95=  82.0s trips=5534
+ Retrying in 1 seconds
+  mappo[2]     seed=789   | travel=  136.4s wait=  30.1s p95=  80.0s trips=5534
+ Retrying in 1 seconds
+  mappo[2]     seed=1337  | travel=  139.4s wait=  32.4s p95=  85.0s trips=5535
+ Retrying in 1 seconds
+  mappo[3]     seed=42    | travel=  138.3s wait=  30.6s p95=  75.1s trips=5538
+ Retrying in 1 seconds
+  mappo[3]     seed=123   | travel=  137.3s wait=  31.2s p95=  78.0s trips=5532
+ Retrying in 1 seconds
+  mappo[3]     seed=456   | travel=  139.3s wait=  31.7s p95=  77.0s trips=5536
+ Retrying in 1 seconds
+  mappo[3]     seed=789   | travel=  139.9s wait=  32.0s p95=  80.0s trips=5542
+ Retrying in 1 seconds
+  mappo[3]     seed=1337  | travel=  139.3s wait=  31.4s p95=  77.0s trips=5533
+ Retrying in 1 seconds
+  mappo[4]     seed=42    | travel=  143.2s wait=  36.0s p95= 101.0s trips=5532
+ Retrying in 1 seconds
+  mappo[4]     seed=123   | travel=  141.9s wait=  36.1s p95= 101.0s trips=5540
+ Retrying in 1 seconds
+  mappo[4]     seed=456   | travel=  143.4s wait=  36.5s p95= 102.0s trips=5518
+ Retrying in 1 seconds
+  mappo[4]     seed=789   | travel=  142.4s wait=  35.1s p95=  96.0s trips=5542
+ Retrying in 1 seconds
+  mappo[4]     seed=1337  | travel=  142.7s wait=  35.2s p95= 100.0s trips=5534
+  (1889.4s)
+
+--- webster ---
+ Retrying in 1 seconds
+ Retrying in 1 seconds
+  webster      seed=42    | travel=  135.3s wait=  27.8s p95=  67.0s trips=5533
+ Retrying in 1 seconds
+ Retrying in 1 seconds
+  webster      seed=123   | travel=  133.9s wait=  27.8s p95=  67.0s trips=5541
+ Retrying in 1 seconds
+ Retrying in 1 seconds
+  webster      seed=456   | travel=  136.0s wait=  28.5s p95=  68.0s trips=5537
+ Retrying in 1 seconds
+ Retrying in 1 seconds
+  webster      seed=789   | travel=  135.9s wait=  28.0s p95=  67.0s trips=5543
+ Retrying in 1 seconds
+ Retrying in 1 seconds
+  webster      seed=1337  | travel=  136.0s wait=  28.2s p95=  67.0s trips=5543
+  (616.1s)
+
+--- actuated ---
+ Retrying in 1 seconds
+  actuated     seed=42    | travel=  121.5s wait=  16.4s p95=  41.0s trips=5690
+ Retrying in 1 seconds
+  actuated     seed=123   | travel=  120.6s wait=  16.6s p95=  41.0s trips=5691
+ Retrying in 1 seconds
+  actuated     seed=456   | travel=  121.6s wait=  16.5s p95=  42.0s trips=5691
+ Retrying in 1 seconds
+  actuated     seed=789   | travel=  121.8s wait=  16.4s p95=  40.5s trips=5691
+ Retrying in 1 seconds
+  actuated     seed=1337  | travel=  122.0s wait=  16.5s p95=  41.0s trips=5690
+  (49.0s)
+
+--- maxpressure ---
+ Retrying in 1 seconds
+  maxpressure  seed=42    | travel=  127.6s wait=  20.6s p95=  49.0s trips=5546
+ Retrying in 1 seconds
+  maxpressure  seed=123   | travel=  126.2s wait=  20.3s p95=  48.0s trips=5546
+ Retrying in 1 seconds
+  maxpressure  seed=456   | travel=  127.1s wait=  20.4s p95=  48.0s trips=5548
+ Retrying in 1 seconds
+  maxpressure  seed=789   | travel=  127.6s wait=  20.6s p95=  50.0s trips=5549
+ Retrying in 1 seconds
+  maxpressure  seed=1337  | travel=  127.8s wait=  20.4s p95=  48.0s trips=5547
+  (479.2s)
+
+--- sotl ---
+ Retrying in 1 seconds
+  sotl         seed=42    | travel=  131.7s wait=  26.0s p95=  71.0s trips=5539
+ Retrying in 1 seconds
+  sotl         seed=123   | travel=  130.0s wait=  25.7s p95=  70.0s trips=5541
+ Retrying in 1 seconds
+  sotl         seed=456   | travel=  130.7s wait=  25.7s p95=  70.0s trips=5541
+ Retrying in 1 seconds
+  sotl         seed=789   | travel=  131.3s wait=  25.7s p95=  69.7s trips=5547
+ Retrying in 1 seconds
+  sotl         seed=1337  | travel=  131.6s wait=  25.8s p95=  71.0s trips=5538
+  (489.1s)
+
+--- fixed ---
+ Retrying in 1 seconds
+  fixed        seed=42    | travel=  139.4s wait=  33.0s p95=  74.0s trips=5537
+ Retrying in 1 seconds
+  fixed        seed=123   | travel=  137.7s wait=  32.9s p95=  73.0s trips=5540
+ Retrying in 1 seconds
+  fixed        seed=456   | travel=  138.3s wait=  32.5s p95=  71.0s trips=5542
+ Retrying in 1 seconds
+  fixed        seed=789   | travel=  139.6s wait=  33.2s p95=  76.0s trips=5548
+ Retrying in 1 seconds
+  fixed        seed=1337  | travel=  140.0s wait=  33.4s p95=  74.0s trips=5540
+  (378.1s)
+
+================================================================================================================================================
+  COMPARISON (mean ± 95% CI; reference = mappo; † p_holm<0.05 vs mappo)
+================================================================================================================================================
+  Metric                             mappo             webster            actuated         maxpressure                sotl               fixed
+----------------------------------------------------------------------------------------------------------------------------------------------
+  Travel time (s)                136.2±4.4           135.4±0.8          121.5±0.5†          127.3±0.6†           131.1±0.6           139.0±0.8
+  Waiting (s)                     29.6±4.1            28.1±0.3           16.5±0.1†           20.5±0.1†            25.8±0.1            33.0±0.3
+  Time loss (s)                   57.5±4.4            56.6±0.5           43.4±0.2†           48.5±0.3†            52.3±0.3            60.3±0.5
+  P95 waiting (s)                77.1±13.5            67.2±0.4            41.1±0.5            48.6±0.8            70.3±0.5            73.6±1.6
+  Served trips                  5537.7±3.7          5539.4±3.8          5690.6±0.5          5547.2±1.1          5541.2±3.1          5541.4±3.6
+  CO2 (mg/ep)                      nan±0.0             nan±0.0             nan±0.0             nan±0.0             nan±0.0             nan±0.0
+  Fuel (mg/ep)                     nan±0.0             nan±0.0             nan±0.0             nan±0.0             nan±0.0             nan±0.0
+================================================================================================================================================
+
+[out] wrote /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260705_074219/summary.json and /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260705_074219/table.csv

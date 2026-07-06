@@ -18,15 +18,16 @@
 \else
 \fi
 
-% --- Headline result macros (fill once, after the campaign completes) -------
+% --- Headline result macros ------------------------------------------------
 % Single source of truth so the Abstract, Discussion (Sec.~VII) and Conclusion
-% (Sec.~VIII) can never disagree. Replace each bracketed placeholder with the
-% measured value; the percent sign stays in the surrounding text.
-\newcommand{\ImproveFixed}{[X]}        % travel-time reduction vs.\ fixed-time
-\newcommand{\ImproveMaxP}{[Y]}         % travel-time reduction vs.\ max-pressure
-\newcommand{\ImproveStrongest}{[Y']}   % reduction vs.\ strongest classical baseline
-\newcommand{\RetainPriv}{[Z]}          % percent of privileged performance retained
-\newcommand{\RestrictionCost}{[W]}     % information-restriction cost (proxy vs.\ priv.)
+% (Sec.~VIII) can never disagree. Filled 2026-07-03 from the N3-grid n=5 eval
+% (results/paper1_mappo/eval_tables/n3_grid_MERGED). NOTE: N3-only for now;
+% revisit once the N2 corridor (shared-reward + upstream-phase-obs) arm lands.
+\newcommand{\ImproveFixed}{12.9}       % travel-time reduction vs.\ fixed-time
+\newcommand{\ImproveMaxP}{10.4}        % travel-time reduction vs.\ max-pressure
+\newcommand{\ImproveStrongest}{10.3}   % reduction vs.\ strongest CAMERA-DEPLOYABLE classical baseline (Webster)
+\newcommand{\RetainPriv}{96.9}         % percent of privileged performance retained (279.7/288.5)
+\newcommand{\RestrictionCost}{3.2}     % information-restriction cost (proxy vs.\ priv.\ travel time)
 % ---------------------------------------------------------------------------
 
 \title{Camera-Observable Multi-Agent Reinforcement Learning for Traffic Signal Control in Mixed Motorcycle-Dominant Traffic}

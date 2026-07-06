@@ -1,0 +1,40 @@
+
+Scenario: n3_grid (eval) | 16 TLS | 3 seeds | methods: mappo
+
+--- mappo ---
+  3 checkpoint(s) x 3 eval seeds
+ Retrying in 1 seconds
+  mappo[0]     seed=42    | travel=  280.4s wait= 103.9s p95= 361.0s trips=14698
+ Retrying in 1 seconds
+  mappo[0]     seed=123   | travel=  308.2s wait= 127.2s p95= 460.0s trips=14706
+ Retrying in 1 seconds
+  mappo[0]     seed=456   | travel=  257.4s wait=  90.0s p95= 309.0s trips=14739
+ Retrying in 1 seconds
+  mappo[1]     seed=42    | travel=  344.7s wait= 155.2s p95= 498.0s trips=14731
+ Retrying in 1 seconds
+  mappo[1]     seed=123   | travel=  320.0s wait= 136.5s p95= 483.0s trips=14718
+ Retrying in 1 seconds
+  mappo[1]     seed=456   | travel=  274.5s wait= 108.3s p95= 396.0s trips=14735
+ Retrying in 1 seconds
+  mappo[2]     seed=42    | travel=  308.2s wait= 132.2s p95= 449.0s trips=14605
+ Retrying in 1 seconds
+  mappo[2]     seed=123   | travel=  371.7s wait= 183.4s p95= 770.0s trips=14389
+ Retrying in 1 seconds
+  mappo[2]     seed=456   | travel=  280.0s wait= 110.0s p95= 426.0s trips=14739
+  (2224.4s)
+
+============================================
+  COMPARISON (mean ± 95% CI; reference = mappo; † p_holm<0.05 vs mappo)
+============================================
+  Metric                             mappo
+------------------------------------------
+  Travel time (s)               305.0±22.9
+  Waiting (s)                   127.4±20.5
+  Time loss (s)                 224.8±22.8
+  P95 waiting (s)               461.3±97.2
+  Served trips                14673.3±94.1
+  CO2 (mg/ep)                      nan±0.0
+  Fuel (mg/ep)                     nan±0.0
+============================================
+
+[out] wrote /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260705_182242/summary.json and /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260705_182242/table.csv

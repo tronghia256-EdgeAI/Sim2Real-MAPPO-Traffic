@@ -4,6 +4,20 @@ Table~\ref{tab:hyperparams} lists the complete MAPPO training hyperparameters us
 learned arm. The IPPO baseline and the privileged upper bound share this identical schedule,
 differing only in the critic structure (independent per-agent critics) and the observation
 dimension (an augmented $38$-dimensional state), respectively.
+Fig.~\ref{fig:training_losses} reports the optimization diagnostics of the proxy arm (mean
+over $5$ seeds): the value loss decays monotonically after the initial critic warm-up
+transient, the policy entropy anneals smoothly from $0.60$ to ${\sim}0.16$ without premature
+collapse, and the approximate KL divergence remains below the $0.015$ target throughout,
+confirming that no seed diverged or relied on early stopping.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{assets/figures/training_losses.pdf}
+  \caption{Training diagnostics of the camera-constrained MAPPO arm on the N3 grid (mean over
+  $5$ seeds; shaded bands are $95\%$ CIs): policy surrogate loss, value loss (log scale),
+  policy entropy, and approximate KL divergence against the $0.015$ target.}
+  \label{fig:training_losses}
+\end{figure}
 
 \begin{table}[h]
 \centering
@@ -21,7 +35,7 @@ Learning rate                   & $3 \times 10^{-4}$ (linear decay) \\
 Rollout horizon                 & $128$ steps \\
 Minibatch size                  & $256$ \\
 Optimization epochs             & $10$ \\
-Total environment steps         & $5 \times 10^{5}$ \\
+Total environment steps         & $3 \times 10^{5}$ \\
 \bottomrule
 \end{tabular}
 \end{table}

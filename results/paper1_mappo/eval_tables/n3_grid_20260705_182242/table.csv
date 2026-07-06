@@ -1,0 +1,8 @@
+method,metric,mean,ci95,n_seeds,p_holm_vs_ref,cohens_d,pct_improvement_vs_ref
+mappo,mean_travel_time_s,304.9960,22.8879,3,,,
+mappo,mean_waiting_time_s,127.4117,20.5284,3,,,
+mappo,mean_time_loss_s,224.7793,22.8393,3,,,
+mappo,p95_waiting_time_s,461.3333,97.1565,3,,,
+mappo,n_trips,14673.3333,94.0717,3,,,
+mappo,total_co2_mg,nan,0.0000,0,,,
+mappo,total_fuel_mg,nan,0.0000,0,,,

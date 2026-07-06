@@ -409,40 +409,77 @@ def fig_restriction_cost() -> None:
 
 
 def fig_noise() -> None:
+    """FIG-6: mean travel time vs noise envelope scale, with 95% CI band over
+    route seeds, the two structural failure modes as markers at the 1x envelope,
+    and the strongest camera-deployable classical baseline as a horizontal
+    reference (read from the MERGED main-table eval — same scenario)."""
     plt = _setup_mpl()
     base = RESULTS / "noise_robustness"
     if not base.exists():
         print("[fig] noise: no noise_robustness/ — skip")
         return
+    # horizontal reference: min mean travel over the deployable classical set
+    ref_val, ref_name = None, None
+    deployable = ("webster", "maxpressure", "sotl", "fixed")
+    for sj in sorted((RESULTS / "eval_tables").glob("*MERGED*/summary.json")):
+        try:
+            agg = json.loads(sj.read_text(encoding="utf-8"))["aggregates"]
+            cands = [(agg[m]["mean_travel_time_s"]["mean"], m)
+                     for m in deployable if m in agg]
+            if cands:
+                ref_val, ref_name = min(cands)
+        except Exception:
+            pass
     fig, ax = plt.subplots(figsize=(COL_W, 2.8))
     drawn = False
-    for sweep in sorted(base.glob("*/sweep.csv")):
-        d = _read_csv(sweep)
-        labels_path = sweep.parent / "summary.json"
-        # x = scale from 'scale_<v>' conditions; structural modes plotted as markers
-        import csv as _csv
-        scales, travel = [], []
+    import csv as _csv
+    sweeps = sorted(base.glob("*/sweep.csv"))
+    struct_style = {"dropout_approach0": ("s", "camera dropout"),
+                    "delay_1step": ("D", "1-step delay")}
+    for sweep in sweeps:
+        scales, travel, ci95 = [], [], []
+        structural = []  # (marker, label, y)
         with open(sweep, encoding="utf-8") as f:
             for row in _csv.DictReader(f):
                 cond = row["condition"]
+                try:
+                    tv = float(row["mean_travel_time_s"])
+                    sd = float(row.get("std_travel_time_s") or 0.0)
+                    n = max(int(float(row.get("n_seeds") or 1)), 1)
+                except (ValueError, TypeError):
+                    continue
                 if cond.startswith("scale_"):
                     try:
                         scales.append(float(cond.split("_", 1)[1]))
-                        travel.append(float(row["mean_travel_time_s"]))
                     except ValueError:
-                        pass
-        if scales:
-            order = np.argsort(scales)
-            sc = np.array(scales)[order]
-            tv = np.array(travel)[order]
-            ax.plot(sc, tv, marker="o", label=sweep.parent.name[:18])
-            drawn = True
+                        continue
+                    travel.append(tv)
+                    ci95.append(1.96 * sd / np.sqrt(n))
+                elif cond in struct_style:
+                    structural.append((*struct_style[cond], tv))
+        if not scales:
+            continue
+        order = np.argsort(scales)
+        sc = np.array(scales)[order]
+        tv = np.array(travel)[order]
+        ci = np.array(ci95)[order]
+        lbl = "MAPPO (proxy)" if len(sweeps) == 1 else sweep.parent.name[:18]
+        line, = ax.plot(sc, tv, marker="o", ms=4, label=lbl, zorder=3)
+        ax.fill_between(sc, tv - ci, tv + ci, alpha=0.2,
+                        color=line.get_color(), lw=0)
+        for mk, slbl, y in structural:
+            ax.scatter([1.0], [y], marker=mk, s=28, color=line.get_color(),
+                       edgecolors="black", linewidths=0.5, zorder=4,
+                       label=f"{slbl} (1×)")
+        drawn = True
+    if ref_val is not None:
+        ax.axhline(ref_val, ls="--", lw=1.0, color="0.35", zorder=2,
+                   label=f"best deployable baseline ({ref_name})")
     ax.set_xlabel("Noise envelope scale (×)")
     ax.set_ylabel("Mean travel time (s)")
-    ax.set_title("Robustness to sensing noise")
-    ax.grid(True)
+    ax.grid(True, alpha=0.4)
     if drawn:
-        ax.legend(fontsize=6)
+        ax.legend(fontsize=6, frameon=False)
         out = OUT_DIR / "noise_robustness.pdf"
         fig.savefig(out, bbox_inches="tight", dpi=300)
         print(f"[fig] saved {out}")

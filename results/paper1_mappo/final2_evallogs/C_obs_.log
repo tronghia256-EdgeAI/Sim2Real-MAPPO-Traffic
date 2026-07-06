@@ -1,0 +1,353 @@
+nohup: ignoring input
+
+Scenario: n3_grid (eval) | 16 TLS | 3 seeds | methods: mappo
+
+--- mappo ---
+  55 checkpoint(s) x 3 eval seeds
+ Retrying in 1 seconds
+  mappo[0]     seed=42    | travel=  964.3s wait= 803.5s p95=2798.0s trips=3885
+ Retrying in 1 seconds
+  mappo[0]     seed=123   | travel=  975.4s wait= 815.3s p95=2810.8s trips=3924
+ Retrying in 1 seconds
+  mappo[0]     seed=456   | travel=  976.3s wait= 821.3s p95=2876.0s trips=3656
+ Retrying in 1 seconds
+  mappo[1]     seed=42    | travel=  311.1s wait= 135.8s p95= 443.4s trips=13453
+ Retrying in 1 seconds
+  mappo[1]     seed=123   | travel=  307.5s wait= 123.8s p95= 430.0s trips=14726
+ Retrying in 1 seconds
+  mappo[1]     seed=456   | travel=  327.5s wait= 143.7s p95= 565.4s trips=14733
+ Retrying in 1 seconds
+  mappo[2]     seed=42    | travel=  377.6s wait= 201.3s p95= 919.6s trips=13088
+ Retrying in 1 seconds
+  mappo[2]     seed=123   | travel=  393.3s wait= 215.4s p95= 948.2s trips=11656
+ Retrying in 1 seconds
+  mappo[2]     seed=456   | travel=  375.0s wait= 199.1s p95= 833.7s trips=13507
+ Retrying in 1 seconds
+  mappo[3]     seed=42    | travel=  583.0s wait= 394.3s p95=1751.0s trips=9920
+ Retrying in 1 seconds
+  mappo[3]     seed=123   | travel=  590.2s wait= 409.0s p95=1743.2s trips=9435
+ Retrying in 1 seconds
+  mappo[3]     seed=456   | travel=  499.5s wait= 322.3s p95=1502.0s trips=10333
+ Retrying in 1 seconds
+  mappo[4]     seed=42    | travel=  519.1s wait= 383.9s p95=2191.2s trips=5710
+ Retrying in 1 seconds
+  mappo[4]     seed=123   | travel=  497.0s wait= 360.2s p95=2147.2s trips=5729
+ Retrying in 1 seconds
+  mappo[4]     seed=456   | travel=  500.1s wait= 364.6s p95=2129.4s trips=5758
+ Retrying in 1 seconds
+  mappo[5]     seed=42    | travel=  464.9s wait= 270.4s p95=1059.0s trips=12021
+ Retrying in 1 seconds
+  mappo[5]     seed=123   | travel=  423.8s wait= 233.9s p95= 954.1s trips=12900
+ Retrying in 1 seconds
+  mappo[5]     seed=456   | travel=  409.8s wait= 226.1s p95= 930.0s trips=12595
+ Retrying in 1 seconds
+  mappo[6]     seed=42    | travel=  446.6s wait= 290.4s p95=1499.7s trips=7678
+ Retrying in 1 seconds
+  mappo[6]     seed=123   | travel=  485.9s wait= 327.7s p95=1654.0s trips=6876
+ Retrying in 1 seconds
+  mappo[6]     seed=456   | travel=  526.5s wait= 365.9s p95=1718.9s trips=6808
+ Retrying in 1 seconds
+  mappo[7]     seed=42    | travel=  280.4s wait= 103.9s p95= 361.0s trips=14698
+ Retrying in 1 seconds
+  mappo[7]     seed=123   | travel=  308.2s wait= 127.2s p95= 460.0s trips=14706
+ Retrying in 1 seconds
+  mappo[7]     seed=456   | travel=  257.4s wait=  90.0s p95= 309.0s trips=14739
+ Retrying in 1 seconds
+  mappo[8]     seed=42    | travel=  344.7s wait= 155.2s p95= 498.0s trips=14731
+ Retrying in 1 seconds
+  mappo[8]     seed=123   | travel=  320.0s wait= 136.5s p95= 483.0s trips=14718
+ Retrying in 1 seconds
+  mappo[8]     seed=456   | travel=  274.5s wait= 108.3s p95= 396.0s trips=14735
+ Retrying in 1 seconds
+  mappo[9]     seed=42    | travel=  308.2s wait= 132.2s p95= 449.0s trips=14605
+ Retrying in 1 seconds
+  mappo[9]     seed=123   | travel=  371.7s wait= 183.4s p95= 770.0s trips=14389
+ Retrying in 1 seconds
+  mappo[9]     seed=456   | travel=  280.0s wait= 110.0s p95= 426.0s trips=14739
+ Retrying in 1 seconds
+  mappo[10]    seed=42    | travel=  288.2s wait= 119.4s p95= 479.0s trips=14728
+ Retrying in 1 seconds
+  mappo[10]    seed=123   | travel=  268.6s wait=  98.6s p95= 319.0s trips=14720
+ Retrying in 1 seconds
+  mappo[10]    seed=456   | travel=  306.3s wait= 126.4s p95= 467.0s trips=14734
+ Retrying in 1 seconds
+  mappo[11]    seed=42    | travel=  272.0s wait= 106.0s p95= 362.0s trips=14724
+ Retrying in 1 seconds
+  mappo[11]    seed=123   | travel=  323.5s wait= 142.8s p95= 550.0s trips=14708
+ Retrying in 1 seconds
+  mappo[11]    seed=456   | travel=  297.5s wait= 119.2s p95= 387.0s trips=14733
+ Retrying in 1 seconds
+  mappo[12]    seed=42    | travel=  277.5s wait= 115.0s p95= 422.0s trips=14710
+ Retrying in 1 seconds
+  mappo[12]    seed=123   | travel=  267.2s wait= 105.5s p95= 353.0s trips=14708
+ Retrying in 1 seconds
+  mappo[12]    seed=456   | travel=  304.4s wait= 133.2s p95= 439.0s trips=14724
+ Retrying in 1 seconds
+  mappo[13]    seed=42    | travel=  271.9s wait= 108.6s p95= 393.0s trips=14733
+ Retrying in 1 seconds
+  mappo[13]    seed=123   | travel=  284.8s wait= 118.4s p95= 430.1s trips=14719
+ Retrying in 1 seconds
+  mappo[13]    seed=456   | travel=  319.7s wait= 140.1s p95= 481.5s trips=14730
+ Retrying in 1 seconds
+  mappo[14]    seed=42    | travel=  286.1s wait= 119.9s p95= 462.7s trips=14727
+ Retrying in 1 seconds
+  mappo[14]    seed=123   | travel=  332.5s wait= 160.9s p95= 645.0s trips=14643
+ Retrying in 1 seconds
+  mappo[14]    seed=456   | travel=  328.1s wait= 163.5s p95= 706.6s trips=13185
+ Retrying in 1 seconds
+  mappo[15]    seed=42    | travel=  280.7s wait= 111.4s p95= 398.0s trips=14735
+ Retrying in 1 seconds
+  mappo[15]    seed=123   | travel=  287.7s wait= 112.0s p95= 367.0s trips=14719
+ Retrying in 1 seconds
+  mappo[15]    seed=456   | travel=  260.5s wait=  94.6s p95= 303.0s trips=14732
+ Retrying in 1 seconds
+  mappo[16]    seed=42    | travel=  305.5s wait= 129.3s p95= 433.0s trips=14686
+ Retrying in 1 seconds
+  mappo[16]    seed=123   | travel=  294.5s wait= 126.2s p95= 427.0s trips=14687
+ Retrying in 1 seconds
+  mappo[16]    seed=456   | travel=  272.2s wait= 107.9s p95= 359.0s trips=14717
+ Retrying in 1 seconds
+  mappo[17]    seed=42    | travel=  403.8s wait= 213.1s p95=1018.0s trips=14198
+ Retrying in 1 seconds
+  mappo[17]    seed=123   | travel=  372.6s wait= 175.2s p95= 572.0s trips=14617
+ Retrying in 1 seconds
+  mappo[17]    seed=456   | travel=  347.5s wait= 162.7s p95= 570.3s trips=14655
+ Retrying in 1 seconds
+  mappo[18]    seed=42    | travel=  294.4s wait= 122.8s p95= 371.0s trips=14701
+ Retrying in 1 seconds
+  mappo[18]    seed=123   | travel=  327.8s wait= 143.0s p95= 449.3s trips=14674
+ Retrying in 1 seconds
+  mappo[18]    seed=456   | travel=  289.9s wait= 117.9s p95= 347.0s trips=14597
+ Retrying in 1 seconds
+  mappo[19]    seed=42    | travel=  301.2s wait= 125.3s p95= 403.8s trips=14684
+ Retrying in 1 seconds
+  mappo[19]    seed=123   | travel=  303.0s wait= 129.1s p95= 408.0s trips=14641
+ Retrying in 1 seconds
+  mappo[19]    seed=456   | travel=  290.1s wait= 116.9s p95= 337.0s trips=14679
+ Retrying in 1 seconds
+  mappo[20]    seed=42    | travel=  270.0s wait= 101.8s p95= 348.8s trips=14705
+ Retrying in 1 seconds
+  mappo[20]    seed=123   | travel=  311.0s wait= 140.4s p95= 520.5s trips=14676
+ Retrying in 1 seconds
+  mappo[20]    seed=456   | travel=  274.4s wait= 110.6s p95= 361.0s trips=14700
+ Retrying in 1 seconds
+  mappo[21]    seed=42    | travel=  292.3s wait= 113.7s p95= 402.0s trips=14723
+ Retrying in 1 seconds
+  mappo[21]    seed=123   | travel=  325.0s wait= 138.0s p95= 450.1s trips=14718
+ Retrying in 1 seconds
+  mappo[21]    seed=456   | travel=  300.9s wait= 134.7s p95= 438.5s trips=13450
+ Retrying in 1 seconds
+  mappo[22]    seed=42    | travel=  278.8s wait= 105.7s p95= 362.0s trips=14721
+ Retrying in 1 seconds
+  mappo[22]    seed=123   | travel=  284.0s wait= 107.5s p95= 346.2s trips=14696
+ Retrying in 1 seconds
+  mappo[22]    seed=456   | travel=  299.0s wait= 123.7s p95= 458.0s trips=14715
+ Retrying in 1 seconds
+  mappo[23]    seed=42    | travel=  307.4s wait= 125.4s p95= 437.0s trips=14736
+ Retrying in 1 seconds
+  mappo[23]    seed=123   | travel=  329.8s wait= 144.2s p95= 534.4s trips=14437
+ Retrying in 1 seconds
+  mappo[23]    seed=456   | travel=  293.3s wait= 119.1s p95= 418.0s trips=14726
+ Retrying in 1 seconds
+  mappo[24]    seed=42    | travel=  327.9s wait= 155.1s p95= 611.0s trips=14549
+ Retrying in 1 seconds
+  mappo[24]    seed=123   | travel=  314.6s wait= 134.5s p95= 523.0s trips=14716
+ Retrying in 1 seconds
+  mappo[24]    seed=456   | travel=  287.6s wait= 114.0s p95= 420.0s trips=14744
+ Retrying in 1 seconds
+  mappo[25]    seed=42    | travel=  316.3s wait= 137.9s p95= 535.0s trips=14722
+ Retrying in 1 seconds
+  mappo[25]    seed=123   | travel=  259.9s wait=  92.1s p95= 300.0s trips=14718
+ Retrying in 1 seconds
+  mappo[25]    seed=456   | travel=  263.6s wait=  97.0s p95= 327.0s trips=14725
+ Retrying in 1 seconds
+  mappo[26]    seed=42    | travel=  251.0s wait=  84.4s p95= 286.0s trips=14728
+ Retrying in 1 seconds
+  mappo[26]    seed=123   | travel=  303.9s wait= 125.5s p95= 472.0s trips=14713
+ Retrying in 1 seconds
+  mappo[26]    seed=456   | travel=  268.3s wait=  97.5s p95= 328.0s trips=14728
+ Retrying in 1 seconds
+  mappo[27]    seed=42    | travel=  298.7s wait= 116.4s p95= 384.1s trips=14739
+ Retrying in 1 seconds
+  mappo[27]    seed=123   | travel=  268.8s wait=  99.3s p95= 345.0s trips=14679
+ Retrying in 1 seconds
+  mappo[27]    seed=456   | travel=  299.4s wait= 120.1s p95= 454.2s trips=14736
+ Retrying in 1 seconds
+  mappo[28]    seed=42    | travel=  290.8s wait= 113.0s p95= 386.0s trips=14722
+ Retrying in 1 seconds
+  mappo[28]    seed=123   | travel=  270.4s wait=  98.3s p95= 318.0s trips=14715
+ Retrying in 1 seconds
+  mappo[28]    seed=456   | travel=  306.6s wait= 126.3s p95= 431.1s trips=14738
+ Retrying in 1 seconds
+  mappo[29]    seed=42    | travel=  330.9s wait= 144.2s p95= 519.0s trips=14724
+ Retrying in 1 seconds
+  mappo[29]    seed=123   | travel=  300.0s wait= 121.3s p95= 409.0s trips=14720
+ Retrying in 1 seconds
+  mappo[29]    seed=456   | travel=  262.7s wait=  98.7s p95= 322.0s trips=14732
+ Retrying in 1 seconds
+  mappo[30]    seed=42    | travel=  290.7s wait= 118.1s p95= 385.9s trips=14722
+ Retrying in 1 seconds
+  mappo[30]    seed=123   | travel=  294.0s wait= 122.2s p95= 446.0s trips=14706
+ Retrying in 1 seconds
+  mappo[30]    seed=456   | travel=  258.9s wait=  93.4s p95= 310.5s trips=14726
+ Retrying in 1 seconds
+  mappo[31]    seed=42    | travel=  377.6s wait= 201.3s p95= 919.6s trips=13088
+ Retrying in 1 seconds
+  mappo[31]    seed=123   | travel=  393.3s wait= 215.4s p95= 948.2s trips=11656
+ Retrying in 1 seconds
+  mappo[31]    seed=456   | travel=  375.0s wait= 199.1s p95= 833.7s trips=13507
+ Retrying in 1 seconds
+  mappo[32]    seed=42    | travel=  583.0s wait= 394.3s p95=1751.0s trips=9920
+ Retrying in 1 seconds
+  mappo[32]    seed=123   | travel=  590.2s wait= 409.0s p95=1743.2s trips=9435
+ Retrying in 1 seconds
+  mappo[32]    seed=456   | travel=  499.5s wait= 322.3s p95=1502.0s trips=10333
+ Retrying in 1 seconds
+  mappo[33]    seed=42    | travel=  412.0s wait= 264.1s p95=1460.0s trips=7934
+ Retrying in 1 seconds
+  mappo[33]    seed=123   | travel=  384.7s wait= 227.6s p95=1075.8s trips=9185
+ Retrying in 1 seconds
+  mappo[33]    seed=456   | travel=  400.5s wait= 244.5s p95=1276.0s trips=8991
+ Retrying in 1 seconds
+  mappo[34]    seed=42    | travel=  519.1s wait= 383.9s p95=2191.2s trips=5710
+ Retrying in 1 seconds
+  mappo[34]    seed=123   | travel=  497.0s wait= 360.2s p95=2147.2s trips=5729
+ Retrying in 1 seconds
+  mappo[34]    seed=456   | travel=  500.1s wait= 364.6s p95=2129.4s trips=5758
+ Retrying in 1 seconds
+  mappo[35]    seed=42    | travel=  464.9s wait= 270.4s p95=1059.0s trips=12021
+ Retrying in 1 seconds
+  mappo[35]    seed=123   | travel=  423.8s wait= 233.9s p95= 954.1s trips=12900
+ Retrying in 1 seconds
+  mappo[35]    seed=456   | travel=  409.8s wait= 226.1s p95= 930.0s trips=12595
+ Retrying in 1 seconds
+  mappo[36]    seed=42    | travel=  446.6s wait= 290.4s p95=1499.7s trips=7678
+ Retrying in 1 seconds
+  mappo[36]    seed=123   | travel=  485.9s wait= 327.7s p95=1654.0s trips=6876
+ Retrying in 1 seconds
+  mappo[36]    seed=456   | travel=  526.5s wait= 365.9s p95=1718.9s trips=6808
+ Retrying in 1 seconds
+  mappo[37]    seed=42    | travel=  343.8s wait= 152.9s p95= 569.0s trips=14627
+ Retrying in 1 seconds
+  mappo[37]    seed=123   | travel=  290.7s wait= 113.1s p95= 396.0s trips=14719
+ Retrying in 1 seconds
+  mappo[37]    seed=456   | travel=  323.4s wait= 143.3s p95= 550.0s trips=14731
+ Retrying in 1 seconds
+  mappo[38]    seed=42    | travel=  280.4s wait= 103.9s p95= 361.0s trips=14698
+ Retrying in 1 seconds
+  mappo[38]    seed=123   | travel=  308.2s wait= 127.2s p95= 460.0s trips=14706
+ Retrying in 1 seconds
+  mappo[38]    seed=456   | travel=  257.4s wait=  90.0s p95= 309.0s trips=14739
+ Retrying in 1 seconds
+  mappo[39]    seed=42    | travel=  291.9s wait= 115.6s p95= 356.9s trips=14482
+ Retrying in 1 seconds
+  mappo[39]    seed=123   | travel=  330.9s wait= 147.7s p95= 473.0s trips=14616
+ Retrying in 1 seconds
+  mappo[39]    seed=456   | travel=  415.5s wait= 224.6s p95= 907.2s trips=13448
+ Retrying in 1 seconds
+  mappo[40]    seed=42    | travel=  344.7s wait= 155.2s p95= 498.0s trips=14731
+ Retrying in 1 seconds
+  mappo[40]    seed=123   | travel=  320.0s wait= 136.5s p95= 483.0s trips=14718
+ Retrying in 1 seconds
+  mappo[40]    seed=456   | travel=  274.5s wait= 108.3s p95= 396.0s trips=14735
+ Retrying in 1 seconds
+  mappo[41]    seed=42    | travel=  344.4s wait= 163.6s p95= 606.0s trips=14695
+ Retrying in 1 seconds
+  mappo[41]    seed=123   | travel=  365.3s wait= 179.5s p95= 663.0s trips=14476
+ Retrying in 1 seconds
+  mappo[41]    seed=456   | travel=  334.4s wait= 156.1s p95= 546.0s trips=14532
+ Retrying in 1 seconds
+  mappo[42]    seed=42    | travel=  308.2s wait= 132.2s p95= 449.0s trips=14605
+ Retrying in 1 seconds
+  mappo[42]    seed=123   | travel=  371.7s wait= 183.4s p95= 770.0s trips=14389
+ Retrying in 1 seconds
+  mappo[42]    seed=456   | travel=  280.0s wait= 110.0s p95= 426.0s trips=14739
+ Retrying in 1 seconds
+  mappo[43]    seed=42    | travel=  337.8s wait= 149.4s p95= 427.0s trips=14636
+ Retrying in 1 seconds
+  mappo[43]    seed=123   | travel=  386.3s wait= 184.5s p95= 597.0s trips=14671
+ Retrying in 1 seconds
+  mappo[43]    seed=456   | travel=  360.5s wait= 187.0s p95= 664.0s trips=11208
+ Retrying in 1 seconds
+  mappo[44]    seed=42    | travel=  288.2s wait= 119.4s p95= 479.0s trips=14728
+ Retrying in 1 seconds
+  mappo[44]    seed=123   | travel=  268.6s wait=  98.6s p95= 319.0s trips=14720
+ Retrying in 1 seconds
+  mappo[44]    seed=456   | travel=  306.3s wait= 126.4s p95= 467.0s trips=14734
+ Retrying in 1 seconds
+  mappo[45]    seed=42    | travel=  306.0s wait= 129.5s p95= 433.0s trips=14734
+ Retrying in 1 seconds
+  mappo[45]    seed=123   | travel=  312.0s wait= 136.5s p95= 518.0s trips=14723
+ Retrying in 1 seconds
+  mappo[45]    seed=456   | travel=  280.4s wait= 113.7s p95= 419.0s trips=14730
+ Retrying in 1 seconds
+  mappo[46]    seed=42    | travel=  272.0s wait= 106.0s p95= 362.0s trips=14724
+ Retrying in 1 seconds
+  mappo[46]    seed=123   | travel=  323.5s wait= 142.8s p95= 550.0s trips=14708
+ Retrying in 1 seconds
+  mappo[46]    seed=456   | travel=  297.5s wait= 119.2s p95= 387.0s trips=14733
+ Retrying in 1 seconds
+  mappo[47]    seed=42    | travel=  350.8s wait= 169.6s p95= 602.0s trips=14462
+ Retrying in 1 seconds
+  mappo[47]    seed=123   | travel=  307.9s wait= 145.4s p95= 532.7s trips=12387
+ Retrying in 1 seconds
+  mappo[47]    seed=456   | travel=  288.1s wait= 121.4s p95= 447.0s trips=14732
+ Retrying in 1 seconds
+  mappo[48]    seed=42    | travel=  277.5s wait= 115.0s p95= 422.0s trips=14710
+ Retrying in 1 seconds
+  mappo[48]    seed=123   | travel=  267.2s wait= 105.5s p95= 353.0s trips=14708
+ Retrying in 1 seconds
+  mappo[48]    seed=456   | travel=  304.4s wait= 133.2s p95= 439.0s trips=14724
+ Retrying in 1 seconds
+  mappo[49]    seed=42    | travel=  342.3s wait= 156.6s p95= 560.0s trips=14611
+ Retrying in 1 seconds
+  mappo[49]    seed=123   | travel=  297.8s wait= 124.8s p95= 415.0s trips=14685
+ Retrying in 1 seconds
+  mappo[49]    seed=456   | travel=  335.5s wait= 154.3s p95= 532.0s trips=14698
+ Retrying in 1 seconds
+  mappo[50]    seed=42    | travel=  271.9s wait= 108.6s p95= 393.0s trips=14733
+ Retrying in 1 seconds
+  mappo[50]    seed=123   | travel=  284.8s wait= 118.4s p95= 430.1s trips=14719
+ Retrying in 1 seconds
+  mappo[50]    seed=456   | travel=  319.7s wait= 140.1s p95= 481.5s trips=14730
+ Retrying in 1 seconds
+  mappo[51]    seed=42    | travel=  278.9s wait= 108.8s p95= 361.0s trips=14702
+ Retrying in 1 seconds
+  mappo[51]    seed=123   | travel=  269.8s wait= 103.1s p95= 333.7s trips=14707
+ Retrying in 1 seconds
+  mappo[51]    seed=456   | travel=  260.6s wait=  96.5s p95= 284.8s trips=14705
+ Retrying in 1 seconds
+  mappo[52]    seed=42    | travel=  286.1s wait= 119.9s p95= 462.7s trips=14727
+ Retrying in 1 seconds
+  mappo[52]    seed=123   | travel=  332.5s wait= 160.9s p95= 645.0s trips=14643
+ Retrying in 1 seconds
+  mappo[52]    seed=456   | travel=  328.1s wait= 163.5s p95= 706.6s trips=13185
+ Retrying in 1 seconds
+  mappo[53]    seed=42    | travel=  321.8s wait= 149.1s p95= 502.0s trips=14688
+ Retrying in 1 seconds
+  mappo[53]    seed=123   | travel=  307.8s wait= 136.4s p95= 411.0s trips=14668
+ Retrying in 1 seconds
+  mappo[53]    seed=456   | travel=  334.6s wait= 158.3s p95= 490.0s trips=14690
+ Retrying in 1 seconds
+  mappo[54]    seed=42    | travel=  280.7s wait= 111.4s p95= 398.0s trips=14735
+ Retrying in 1 seconds
+  mappo[54]    seed=123   | travel=  287.7s wait= 112.0s p95= 367.0s trips=14719
+ Retrying in 1 seconds
+  mappo[54]    seed=456   | travel=  260.5s wait=  94.6s p95= 303.0s trips=14732
+  (51059.1s)
+
+============================================
+  COMPARISON (mean ± 95% CI; reference = mappo; † p_holm<0.05 vs mappo)
+============================================
+  Metric                             mappo
+------------------------------------------
+  Travel time (s)               347.9±30.0
+  Waiting (s)                   174.9±30.8
+  Time loss (s)                 267.3±29.6
+  P95 waiting (s)              695.8±143.0
+  Served trips               13380.4±720.2
+  CO2 (mg/ep)                      nan±0.0
+  Fuel (mg/ep)                     nan±0.0
+============================================
+
+[out] wrote /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260705_204817/summary.json and /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/eval_tables/n3_grid_20260705_204817/table.csv

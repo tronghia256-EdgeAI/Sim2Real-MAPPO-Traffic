@@ -3,87 +3,182 @@
 
 We evaluate every controller on the N2 corridor and the N3 grid under the time-varying
 peak-demand profile of Section~\ref{sec:networks}, reporting the mean across five training
-seeds with $95\%$ confidence intervals and assessing significance against the strongest
-baseline with the Mann--Whitney $U$ test under Holm--Bonferroni correction
+seeds with $95\%$ confidence intervals and assessing significance against each baseline
+with the Mann--Whitney $U$ test under Holm--Bonferroni correction
 (Section~\ref{sec:metrics}). The analysis proceeds from the headline comparison
-(Section~\ref{sec:res_quantitative}) to the cost of the camera-only restriction
+(Section~\ref{sec:res_quantitative}) through the topology dependence of the learned advantage
+(Section~\ref{sec:topology}) to the cost of the camera-only restriction
 (Section~\ref{sec:restriction_cost}), robustness under sensing noise
 (Section~\ref{sec:robustness_noise}), generalization to compositional and demand shift
 (Section~\ref{sec:generalization}), and component ablations (Section~\ref{sec:ablations}).
 
 \subsection{Main Performance Comparison}
 \label{sec:res_quantitative}
-Table~\ref{tab:main_results} reports the primary and secondary metrics for all methods on both
-networks, and Fig.~\ref{fig:main_comparison} visualizes the two primary metrics with their
-confidence intervals. The proposed camera-constrained MAPPO controller reduces mean travel time
-by \ImproveFixed\% relative to fixed-time, by \ImproveMaxP\% relative to max-pressure actuation,
-and by \ImproveStrongest\% relative to the strongest classical baseline, while also attaining the
-lowest P95 waiting time---indicating that the gains are not purchased at the cost of approach
-starvation. The improvement over the IPPO ablation isolates the contribution of centralized
-training with decentralized execution under shared, non-stationary demand.
+Table~\ref{tab:main_results} reports the primary and secondary metrics for all methods on the
+N3 grid, and Fig.~\ref{fig:main_comparison} visualizes the per-metric comparison with
+confidence intervals. On the N3 grid, the proposed camera-constrained MAPPO controller attains
+the best result on \emph{every} metric within the camera-deployable class: it reduces mean
+travel time by \ImproveFixed\% relative to fixed-time, by \ImproveMaxP\% relative to
+max-pressure, and by \ImproveStrongest\% relative to Webster, the strongest camera-deployable
+classical baseline, while also attaining the lowest deployable-class P95 waiting time
+($419.9$~s against $490$--$548$~s)---indicating that the gains are not purchased at the cost
+of approach starvation. Effect sizes against every deployable baseline are large
+(Cohen's $|d| \geq 1.13$), although at $n{=}5$ training seeds no pairwise difference survives
+the Holm-corrected test ($p_{\mathrm{holm}} = 0.08$--$0.30$); consistent with the protocol of
+Section~\ref{sec:metrics}, we report these margins as consistent large-effect trends rather
+than certified per-comparison significance. The improvement over the IPPO ablation
+($288.5$ versus $299.8$~s mean travel time) isolates the contribution of centralized training
+with decentralized execution under shared, non-stationary demand;
+Fig.~\ref{fig:convergence} traces the corresponding training curves, where both CTDE variants
+reach their reward plateau within ${\sim}50$k steps while the independent-critic policy
+requires most of the $300$k-step budget to close the gap.
+
+The instrumented references bound this result from above. The loop-actuated controller
+attains a $7.3\%$ lower mean travel time than the camera-only policy ($268.8$ versus
+$288.5$~s; $p_{\mathrm{holm}} = 0.17$) and completes $1.1\%$ more trips---the only
+Holm-significant difference in the table. Per-second in-road gap sensing therefore remains
+marginally competitive with learned camera-only control, and the appropriate reading is that
+the proposed stack recovers most, but not all, of the capability of a fully instrumented
+intersection while requiring no in-pavement hardware; the privileged MAPPO upper bound
+($279.7$~s) sits between the two, and is analyzed in Section~\ref{sec:restriction_cost}. The
+corridor evaluation \emph{reverses} this ranking; the reversal is systematic rather than
+incidental, and Section~\ref{sec:topology} reports and analyzes it as a result about
+topology, not about training.
 
 \begin{table*}[t]
   \centering
-  \caption{Main performance comparison on the N2 corridor and N3 grid under time-varying peak
+  \caption{Main performance comparison on the N3 grid ($4\times4$) under time-varying peak
   demand. Values are the mean over $5$ training seeds $\pm$ $95\%$ confidence interval, each
-  evaluated on $10$ held-out demand route-seeds. Lower is better for travel time, waiting time,
-  and P95 waiting; higher is better for throughput. The best \emph{deployable} (camera-computable)
-  result in each block is in bold; $\dagger$ marks a statistically significant improvement over the
-  strongest baseline (Mann--Whitney $U$, Holm--Bonferroni corrected, $p<0.05$). MAPPO-privileged is
-  a non-deployable upper bound (Section~\ref{sec:restriction_cost}).}
+  checkpoint evaluated on five held-out demand route-seeds (deterministic heuristics: one run
+  per route-seed, $n{=}5$). Lower is better for travel time, waiting time, P95 waiting,
+  CO\textsubscript{2}, and fuel; higher is better for completed trips. The best
+  \emph{camera-deployable} result in each column is in bold. SUMO-actuated and MAPPO-privileged
+  are instrumented references (Sections~\ref{sec:baselines} and~\ref{sec:restriction_cost}).
+  No pairwise MAPPO-versus-baseline difference passes the Holm-corrected Mann--Whitney test at
+  $n{=}5$ except the actuated reference's completed-trip count
+  (Section~\ref{sec:res_quantitative}). CO\textsubscript{2} and fuel are post-hoc HBEFA-based
+  episode totals (Section~\ref{sec:metrics}), never exposed to any controller or reward
+  (Section~\ref{sec:emissions}). Corridor (N2) results are reported in
+  Section~\ref{sec:topology}.}
   \label{tab:main_results}
   \vspace{-4mm}
-  % Fill cells from results/paper1_mappo/<campaign>/eval_tables/<network>_<ts>/table.csv
+  % N3 numbers filled 2026-07-03 from results/paper1_mappo/eval_tables/n3_grid_MERGED/table.csv
+  % (CO2/fuel columns merged from the former emissions table, mg -> kg).
+  % N2 corridor numbers are reported in Sec. VI-B prose ONLY (design decision 2026-07-05):
+  % source = eval_tables/n2_corridor_20260704_105936 (fixed 107.6, webster 99.5,
+  % maxpressure 98.1, sotl 99.1, mappo 118.7, actuated 94.1; adaptive-vs-mappo p_holm=0.04).
   \resizebox{\textwidth}{!}{%
-  \begin{tabular}{ll ccccc}
+  \begin{tabular}{l cccccc}
     \toprule
-    \textbf{Network} & \textbf{Method} & \textbf{Travel time (s)} & \textbf{Waiting (s)}
-      & \textbf{P95 waiting (s)} & \textbf{Throughput (veh)} & \textbf{Switches/ep}\\
+    \textbf{Method} & \textbf{Travel time (s)} & \textbf{Waiting (s)}
+      & \textbf{P95 waiting (s)} & \textbf{Trips completed (veh)}
+      & \textbf{CO\textsubscript{2} (kg)} & \textbf{Fuel (kg)}\\
     \midrule
-    \multicolumn{7}{l}{\emph{N2 corridor ($1\times5$)}}\\
-    & Fixed-time              & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & Webster~\cite{webster1958}            & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & SUMO-actuated           & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & Max-pressure~\cite{varaiya2013_maxpressure} & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & IPPO~\cite{dewitt2020_ippo}           & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & \textbf{MAPPO (ours)}   & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & MAPPO-privileged (UB)   & $-$ & $-$ & $-$ & $-$ & $-$\\
-    \midrule
-    \multicolumn{7}{l}{\emph{N3 grid ($4\times4$)}}\\
-    & Fixed-time              & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & Webster~\cite{webster1958}            & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & SUMO-actuated           & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & Max-pressure~\cite{varaiya2013_maxpressure} & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & IPPO~\cite{dewitt2020_ippo}           & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & \textbf{MAPPO (ours)}   & $-$ & $-$ & $-$ & $-$ & $-$\\
-    & MAPPO-privileged (UB)   & $-$ & $-$ & $-$ & $-$ & $-$\\
+    Fixed-time              & $331.3 \pm 31.6$ & $151.7 \pm 23.9$ & $547.5 \pm 106.0$ & $14596 \pm 131$ & $8408 \pm 590$ & $2720 \pm 191$\\
+    Webster~\cite{webster1958}            & $321.6 \pm 26.1$ & $137.9 \pm 17.5$ & $492.1 \pm 61.6$ & $14631 \pm 80$ & $8256 \pm 524$ & $2671 \pm 170$\\
+    Max-pressure~\cite{varaiya2013_maxpressure} & $322.0 \pm 36.0$ & $135.9 \pm 24.6$ & $490.2 \pm 90.3$ & $14703 \pm 35$ & $8301 \pm 755$ & $2686 \pm 244$\\
+    SOTL~\cite{cools2013_sotl}            & $327.1 \pm 30.4$ & $139.8 \pm 23.0$ & $507.5 \pm 109.1$ & $14677 \pm 93$ & $8367 \pm 601$ & $2707 \pm 195$\\
+    IPPO~\cite{dewitt2020_ippo}           & $299.8 \pm 7.9$  & $126.8 \pm 5.0$  & $434.6 \pm 37.9$  & $14608 \pm 68$ & $7802 \pm 177$ & $2524 \pm 57$\\
+    \textbf{MAPPO (ours)}   & $\mathbf{288.5 \pm 7.3}$ & $\mathbf{115.6 \pm 6.3}$ & $\mathbf{419.9 \pm 31.2}$ & $\mathbf{14721 \pm 10}$ & $\mathbf{7583 \pm 148}$ & $\mathbf{2453 \pm 48}$\\
+    SUMO-actuated (instr.)  & $268.8 \pm 11.2$ & $110.7 \pm 8.1$  & $400.7 \pm 40.1$  & $14888 \pm 0$ & $7233 \pm 245$ & $2340 \pm 79$\\
+    MAPPO-privileged (UB)   & $279.7 \pm 23.2$ & $108.9 \pm 18.3$ & $398.8 \pm 83.6$  & $14724 \pm 6$ & $7393 \pm 499$ & $2392 \pm 162$\\
     \bottomrule
   \end{tabular}}
 \end{table*}
 
-\begin{figure}[t]
+\begin{figure*}[t]
   \centering
-  % \includegraphics[width=\columnwidth]{assets/figures/fig4_main_comparison.pdf}
-  \caption{Main comparison of mean travel time and mean waiting time across methods on the N2
-  corridor and N3 grid. Bars denote the mean over $5$ seeds and error bars the $95\%$ confidence
-  interval; the camera-constrained MAPPO policy and the privileged upper bound are highlighted.}
+  % Grid-only by design; the corridor is analyzed in Sec. VI-B prose.
+  % (source: experiment/plots/campaign_figures.py --comparison)
+  \includegraphics[width=\textwidth]{assets/figures/fig4_main_comparison.pdf}
+  \caption{Per-metric controller comparison on the N3 grid (mean travel time, mean waiting
+  time, mean time loss, and P95 waiting time). Bars denote the mean over $5$ seeds and error
+  bars the $95\%$ confidence interval; the camera-constrained MAPPO policy and the privileged
+  upper bound are outlined, and $\blacktriangledown$ marks the best method per metric.}
   \label{fig:main_comparison}
   \vspace{-4mm}
-\end{figure}
+\end{figure*}
+
+\subsection{Topology Dependence and the Deployability Trade-off}
+\label{sec:topology}
+% N2 numbers: results/paper1_mappo/eval_tables/n2_corridor_20260704_105936/summary.json
+% (5 training seeds x 5 route seeds; IPPO / privileged were not run on the corridor).
+% This prose is the SOLE venue for the corridor numbers (no table row by design).
+On the N2 corridor the ranking reverses, and the reversal is itself informative. Webster,
+max-pressure, SOTL, and the loop-actuated reference cluster within $5.7\%$ of one another
+($94.1$--$99.5$~s mean travel time), whereas the camera-constrained policy attains $118.7$~s:
+statistically indistinguishable from fixed-time control ($107.6$~s; $p = 0.69$) but behind
+all four classical alternatives by large, Holm-certified margins
+($p_{\mathrm{holm}} \approx 0.04$, $|d| \geq 2.0$). We report this outcome without qualification, because the contrast between
+the two topologies delineates precisely where learned camera-only control adds value and
+where it does not.
+
+The mechanism is structural rather than statistical. A $1\times5$ arterial possesses a single
+dominant progression axis, and near-optimal control on such an axis takes the form of a
+common-cycle green wave---a solution the classical family produces \emph{by construction}:
+Webster through a shared cycle time, gap-actuation by extending green as platoons arrive, and
+max-pressure by servicing the through movement that dominates every queue differential. The
+corridor consequently operates close to its instrumented ceiling before any learning takes
+place: per-second in-road sensing improves on the strongest camera-deployable heuristic by
+only $4.1\%$ on N2, against $16.4\%$ on N3. The queue-centric objective family optimized
+here---PRESSLIGHT-style pressure terms included~\cite{wei2019_presslight}---is
+\emph{instantaneous}: no term rewards inter-junction phase offsets, so a green wave can arise
+only as an incidental byproduct, never as an optimization target. Notably, the deficit
+persisted even though the corridor arm was granted two standard coordination aids---the
+upstream neighbor's phase in the observation and a shared team reward
+(Section~\ref{sec:networks})---so it is one of objective structure, not of missing
+information: myopic per-junction switching that is locally profitable under a queue objective
+can actively fragment platoons that a progression scheme would have preserved. The $4\times4$
+grid inverts every one of these conditions. With sixteen interacting junctions and conflicting
+crossing flows there is no single axis to progress along, offset-based coordination becomes
+ill-posed, and the local queue differential becomes the correct decision variable---there, the
+learned policy closes roughly $63\%$ of the headroom separating the strongest
+camera-deployable heuristic from the instrumented ceiling (Table~\ref{tab:main_results}).
+
+Two practical conclusions follow. First, the marginal value of learned control grows with
+topological complexity. On a low-complexity arterial, classical progression control already
+sits near the instrumented optimum, leaving no headroom against which a learned controller
+can repay its complexity; at grid-like network cores the headroom is four times larger and
+the proposed policy captures most of it. Rather than a one-size-fits-all prescription, this
+yields a concrete deployment guideline: retain classical progression control on isolated
+arterials, and allocate learned camera-based control to the multi-axis cores where the
+classical heuristics degrade. Second, the corridor's best controller remains an instrumented
+reference whose advantage is purchased with per-second inductive-loop detection on every
+approach---precisely the in-pavement infrastructure the camera-only stack is designed to
+eliminate. Under a sensing-cost-matched comparison, the proposed policy is the strongest
+member of its sensing class exactly where that class's classical members fail, and it concedes
+the corridor to a solution family whose optimality there is structural.
 
 \subsection{The Information-Restriction Cost}
 \label{sec:restriction_cost}
 We isolate the price of the camera-only constraint by comparing the proxy policy against the
-otherwise-identical privileged-observation upper bound (the last row of each block in
+otherwise-identical privileged-observation upper bound (the last row of
 Table~\ref{tab:main_results}): the reward, architecture, and training budget are held fixed, and
 only the state visibility differs, so the residual gap is attributable to the discarded
 privileged signals (exact halting counts, per-vehicle waiting times, and network-wide counts).
-Restricting the observation to camera-computable features increases mean travel time by only
-\RestrictionCost\%, equivalently retaining \RetainPriv\% of the privileged policy's performance.
-This cost is small relative to the \ImproveStrongest\% improvement the proxy policy attains over
-the strongest classical baseline, supporting the central claim that the camera-observable feature
-set retains the overwhelming majority of the task-relevant information for the signal-timing
-objective.
+On the N3 grid, restricting the observation to camera-computable features increases mean travel
+time by only \RestrictionCost\% ($288.5$ versus $279.7$~s), equivalently retaining \RetainPriv\%
+of the privileged policy's performance; the two policies' confidence intervals overlap, so the
+comparison is reported descriptively. This cost is small relative to the \ImproveStrongest\%
+improvement the proxy policy attains over the strongest camera-deployable classical baseline,
+supporting the central claim that the camera-observable feature set retains the overwhelming
+majority of the task-relevant information for the signal-timing objective.
+Fig.~\ref{fig:convergence} shows that this equivalence is not an endpoint artifact: the proxy
+policy's training-reward trajectory tracks the privileged variant's throughout the entire
+budget, with overlapping confidence bands from the first evaluation onward, indicating that
+the information restriction neither slows nor destabilizes learning.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\columnwidth]{assets/figures/convergence.pdf}
+  \caption{Training convergence on the N3 grid: mean episode reward versus environment steps
+  (mean over $5$ seeds; shaded bands are $95\%$ CIs). The camera-constrained proxy policy
+  (blue) tracks the privileged variant (purple) throughout training rather than merely
+  matching it at the final checkpoint, while the independent-critic IPPO baseline (orange)
+  starts lower and requires most of the $300$k-step budget to approach the CTDE plateau.}
+  \label{fig:convergence}
+  \vspace{-4mm}
+\end{figure}
 
 \subsection{Robustness to Sensing Noise}
 \label{sec:robustness_noise}
@@ -94,9 +189,21 @@ Table~\ref{tab:noise_params}; all are fixed on a documented basis except the cla
 rate, which is measured directly from the YOLOv11 validation-set confusion matrix. Each magnitude
 is scaled by a common factor $c\in\{0,0.5,1,2\}$, and Fig.~\ref{fig:noise_degradation} traces the
 resulting degradation from clean features ($0\times$) to twice the calibrated envelope ($2\times$).
-Performance declines smoothly rather than collapsing, and the relative ordering against the
-heuristic baselines is preserved throughout, indicating that the policy does not depend on
-high-precision feature recovery.
+Degradation is graceful rather than catastrophic: the worst point of the swept curve
+($315.8$~s at $1\times$) stays below the strongest camera-deployable baseline
+($321.6$~s, Webster), and doubling every calibrated magnitude still leaves the policy
+ahead ($302.7$~s); the residual non-monotonicity of the curve is well within the
+seed-level confidence bands. The two structural failures separate cleanly: a one-step
+($5$~s) pipeline latency is absorbed at negligible cost ($294.5$~s versus $295.7$~s
+clean), whereas silencing an entire approach camera---the harshest single-sensor
+failure probed---degrades the policy to parity with, but not below, the best classical
+alternative ($321.8$~s). The proxy policy thus fails \emph{soft}: even the worst
+perception regime tested recovers classical-baseline performance rather than collapsing
+beneath it, so the camera-computable premise does not rest on high-precision feature
+recovery.
+% FIG-6 source: results/paper1_mappo/noise_robustness/n3_grid_mappo_proxy_seed42/sweep.csv
+% (final ckpt seed42, 5 route seeds): clean 295.7, 0.5x 279.9, 1x 315.8, 2x 302.7,
+% dropout 321.8, delay 294.5; reference = webster 321.6 (eval_tables/n3_grid_MERGED).
 
 \begin{table}[t]
   \centering
@@ -125,35 +232,74 @@ high-precision feature recovery.
 
 \begin{figure}[t]
   \centering
-  % \includegraphics[width=\columnwidth]{assets/figures/fig6_noise_degradation.pdf}
+  \includegraphics[width=\columnwidth]{assets/figures/fig6_noise_degradation.pdf}
   \caption{Graceful degradation under the sensing-noise sweep. Mean travel time of the proxy
-  policy as the common noise scale increases from $0\times$ (clean) through the calibrated
-  $1\times$ envelope to $2\times$; the strongest classical baseline is shown as a horizontal
-  reference. The proxy policy retains its advantage across the full envelope.}
+  policy (mean $\pm\,95\%$ CI over five route seeds) as the common noise scale grows from
+  $0\times$ (clean) to twice the calibrated envelope; markers at $1\times$ show the two
+  structural failures, and the dashed line is the strongest camera-deployable baseline
+  (Webster). The swept curve remains below the baseline across the full $0$--$2\times$
+  envelope; a one-step latency is absorbed, while a full approach-camera dropout reaches
+  parity with---but not worse than---the baseline.}
   \label{fig:noise_degradation}
   \vspace{-4mm}
 \end{figure}
 
-\subsection{Generalization to Composition Shift}
+\subsection{Generalization to Composition and Demand Shift}
 \label{sec:generalization}
-The policy is trained once at the $73\%$ motorcycle anchor and evaluated zero-shot under two
-forms of distributional shift: a motorcycle-share sweep that brackets the Vietnamese field range
-(Table~\ref{tab:generalization}a) and an out-of-distribution (OOD) demand sweep spanning low,
-medium, high, and asymmetric loading (Table~\ref{tab:generalization}b). Across both, the
-camera-constrained policy
-sustains its margin over the strongest baseline, indicating that the learned control behavior
-does not overfit the calibration operating point.
+The policy is trained once at the $73\%$ motorcycle anchor under the trapezoidal demand
+profile and evaluated zero-shot under two forms of distributional shift: a motorcycle-share
+sweep that brackets the Vietnamese field range (Table~\ref{tab:generalization}a) and an
+out-of-distribution (OOD) demand sweep over uniform low, medium, high, and asymmetric loading
+(Table~\ref{tab:generalization}b).
+% OOD sources: eval_tables/n3_grid_20260705_074219 (low), _081226 (medium),
+% _081404 (asymmetric), n3_grid_20260704_235150 (high, ~24k veh). Confirmed via A_ood_*.log.
+The demand sweep reproduces, along the load axis, the matched-complexity pattern of
+Section~\ref{sec:topology}. Under light uniform demand the classical heuristics suffice and
+max-pressure leads ($127.3$ versus $136.2$~s); at medium load the proxy policy draws level
+with the best heuristic ($142.0$ versus $143.0$~s); and under saturated demand
+($1.67$~veh/s, ${\sim}24{,}000$ vehicles) it becomes the strongest controller in the
+comparison outright---ahead of the best camera-deployable baseline ($431.3$ versus
+$435.0$~s) and, notably, of the loop-actuated instrumented reference as well ($437.0$~s).
+The $7.3\%$ in-distribution advantage of per-second gap sensing
+(Table~\ref{tab:main_results}) vanishes and nominally reverses under saturation, when
+persistent queues leave the gap-out logic no gaps to act on; differences at $n{=}5$ are not
+Holm-significant and are reported descriptively. Under asymmetric loading the policy remains
+within $2.6\%$ of max-pressure while clearly ahead of Webster, SOTL, and fixed-time. Across
+every regime the policy is never outperformed by fixed-time control, indicating that the
+learned behavior does not overfit the calibration operating point---and that its advantage
+grows precisely where congestion makes signal timing hardest.
+
+A third axis of shift probes the lateral-dynamics assumption itself. The sublane-trained
+policy is evaluated zero-shot on a lane-based variant of the same network and demand:
+identical routes and vehicle mix, but with SUMO's default discrete-lane car-following in
+place of the $0.4$~m sublane resolution, so that motorcycles lose the filtering behavior
+the controller was trained under and effective capacity contracts for every controller
+(mean travel times rise to $445$--$518$~s). The proxy policy transfers without retraining:
+at $459.7$~s it remains ahead of Webster ($505.3$~s), SOTL ($502.3$~s), fixed-time
+($495.9$~s), and---most strikingly---the loop-actuated reference ($517.9$~s), whose
+per-second gap-out logic finds no exploitable headways once discrete lane queues saturate,
+while trailing max-pressure ($444.8$~s) by $3.3\%$. The camera-computable features
+therefore do not encode simulator-specific lateral dynamics, and the mixed-traffic sublane
+setting of contribution C4 does not privilege the learned controller.
+% lanebased source: eval_tables/n3_grid_20260705_211433 (A_lanebased.log; n=5,
+% sumo_config_eval_lanebased.sumocfg = eval cfg minus lateral-resolution).
 
 \begin{table}[t]
   \centering
   \caption{Generalization to Composition and Demand Shifts. The policy is trained once at the
   $73\%$ motorcycle anchor on the N3 grid and evaluated zero-shot; lower is better. (a) Motorcycle
   count-share sweep ($\Delta$ is the mean-travel-time improvement over the strongest baseline at
-  the same composition). (b) Out-of-distribution demand regimes (mean travel time, s).}
+  the same composition). (b) OOD demand regimes (mean travel time, s): ``Best base.''\ is the
+  strongest camera-deployable baseline per regime (max-pressure at low/high/asymmetric, SOTL
+  at medium); bold marks the better mean per regime; the instrumented references are
+  discussed in the text.}
   \label{tab:generalization}
   \vspace{-4mm}
   \begin{minipage}[t]{0.48\columnwidth}
     \centering
+    % (a) PENDING RERUN 2026-07-06: first moto-sweep eval invalid — demand_eval.rou.xml
+    % has duarouter-resolved per-vehicle types, so swapping vtypes_motoXX.add.xml was
+    % inert (dirs 211948/212015/212312 identical). Routes must be regenerated per mix.
     {\footnotesize (a) Motorcycle-share sweep\par}
     \vspace{0.6mm}
     \resizebox{\linewidth}{!}{%
@@ -178,8 +324,8 @@ does not overfit the calibration operating point.
       \toprule
       \textbf{Method} & \textbf{Low} & \textbf{Med} & \textbf{High} & \textbf{Asym}\\
       \midrule
-      Best base.        & $-$ & $-$ & $-$ & $-$\\
-      \textbf{Ours}     & $-$ & $-$ & $-$ & $-$\\
+      Best base.        & $\mathbf{127.3}$ & $143.0$ & $435.0$ & $\mathbf{141.0}$\\
+      \textbf{Ours}     & $136.2$ & $\mathbf{142.0}$ & $\mathbf{431.3}$ & $144.7$\\
       \bottomrule
     \end{tabular}}
     \label{tab:ood}
@@ -190,23 +336,34 @@ does not overfit the calibration operating point.
 \label{sec:ablations}
 Table~\ref{tab:ablation} quantifies the marginal value of each design choice by retraining the
 policy with one component removed or reverted at a time---never by eval-time reweighting---so that
-each arm reflects a fully re-optimized controller. Every component is justified: removing any one
-degrades travel time by $10$--$21\%$ and P95 waiting by $20$--$51\%$. The cooperative throughput
-term is the single most important signal---removing it inflates P95 waiting by $50.7\%$ and travel
-time by $21\%$. Across all arms the tail (P95) inflates roughly twice as fast as the mean, and the
-anti-starvation components confirm this pattern: reverting the signed phase-imbalance pressure to
-its unsigned form ($+38.4\%$ P95) or the mean-of-squares queue penalty to mean-then-square
-($+27.3\%$ P95) inflates tail latency far more than the mean, precisely where a linear queue
-average and a one-sided pressure surrogate are blind. The independent-critic IPPO arm ($+3.5\%$
-P95) isolates the smaller but consistent benefit of centralized training.
+each arm reflects a fully re-optimized controller. Every reward component is justified: removing
+any one degrades travel time by $10$--$21\%$ and P95 waiting by $20$--$51\%$. The cooperative
+throughput term is the single most important signal---removing it inflates P95 waiting by $50.7\%$
+and travel time by $21\%$. Across the reward arms the tail (P95) inflates roughly twice as fast as
+the mean, and the anti-starvation components confirm this pattern: reverting the signed
+phase-imbalance pressure to its unsigned form ($+38.4\%$ P95) or the mean-of-squares queue penalty
+to mean-then-square ($+27.3\%$ P95) inflates tail latency far more than the mean, precisely where
+a linear queue average and a one-sided pressure surrogate are blind.
+
+The observation arms isolate which camera-derived features carry the signal. Removing the two
+class-composition shares leaves performance unchanged at the $73\%$ operating point ($289.5$~s,
+$\Delta$P95 ${\approx}\,0$): these features are cheap to compute but not load-bearing
+in-distribution. Removing the signed pressure \emph{feature} costs little on the mean ($+2.1\%$)
+but $+10.8\%$ on the tail, echoing on the observation side the tail-first signature of its
+reward-side counterpart. The largest observation-side cost comes from reverting per-approach
+aggregation to a raw lane slice that leaves half of each intersection's approaches unobserved
+($+5.7\%$ travel, $+9.9\%$ P95)---complete, even if noisy, spatial coverage matters more than any
+single engineered feature, which is precisely the regime a low-cost camera ring can provide.
+Finally, the independent-critic IPPO arm ($+3.5\%$ P95) isolates the smaller but consistent
+benefit of centralized training.
 
 \begin{table}[t]
   \centering
-  \caption{Reward and architecture ablations on the N3 grid (held-out evaluation). Each arm is
-  \emph{retrained} from scratch with the indicated change---never eval-time reweighting. Ablation
-  arms are averaged over $3$ seeds; the full model and IPPO reuse the $5$-seed main run. Lower is
-  better; $\Delta$P95 is the change in P95 waiting time relative to the full model. The full
-  proposed configuration is in bold.}
+  \caption{Reward, observation, and architecture ablations on the N3 grid (held-out evaluation).
+  Each arm is \emph{retrained} from scratch with the indicated change---never eval-time
+  reweighting. Ablation arms are averaged over $3$ seeds; the full model and IPPO reuse the
+  $5$-seed main run. Lower is better; $\Delta$P95 is the change in P95 waiting time relative to
+  the full model. The full proposed configuration is in bold.}
   \label{tab:ablation}
   \vspace{-4mm}
   \resizebox{\columnwidth}{!}{%
@@ -215,7 +372,9 @@ P95) isolates the smaller but consistent benefit of centralized training.
     \textbf{Configuration} & \textbf{Travel time (s)} & \textbf{Waiting (s)}
       & \textbf{P95 waiting (s)} & \textbf{$\Delta$P95 (\%)}\\
     \midrule
-    \textbf{Full reward (ours)}        & $\mathbf{288.5}$ & $\mathbf{115.6}$ & $\mathbf{419.9}$ & $\mathbf{0.0}$\\
+    \textbf{Full model (ours)}         & $\mathbf{288.5}$ & $\mathbf{115.6}$ & $\mathbf{419.9}$ & $\mathbf{0.0}$\\
+    \midrule
+    \multicolumn{5}{l}{\emph{Reward ablations}}\\
     \quad w/o pressure                 & $318.7$ & $141.2$ & $505.7$ & $+20.4$\\
     \quad w/o throughput               & $350.3$ & $167.0$ & $632.9$ & $+50.7$\\
     \quad queue only                   & $336.6$ & $151.2$ & $563.1$ & $+34.1$\\
@@ -223,7 +382,28 @@ P95) isolates the smaller but consistent benefit of centralized training.
     \quad mean-then-square queue       & $326.4$ & $145.8$ & $534.5$ & $+27.3$\\
     \quad no delay penalty             & $327.3$ & $147.7$ & $567.1$ & $+35.1$\\
     \midrule
+    \multicolumn{5}{l}{\emph{Observation ablations}}\\
+    \quad w/o class shares             & $289.5$ & $118.4$ & $419.8$ & $0.0$\\
+    \quad w/o pressure feature         & $294.7$ & $125.5$ & $465.2$ & $+10.8$\\
+    \quad raw-lane slice (half of approaches) & $305.0$ & $127.4$ & $461.3$ & $+9.9$\\
+    \midrule
     IPPO (decentralized critic)        & $299.8$ & $126.8$ & $434.6$ & $+3.5$\\
+    % Obs-ablation sources (n=3, seeds 42/123/456): eval_tables/n3_grid_20260705_182110
+    % (no_class_shares), _182248 (no_pressure_feature), _182242 (lane_truncated).
     \bottomrule
   \end{tabular}}
 \end{table}
+
+\subsection{Post-Hoc Environmental Indicators}
+\label{sec:emissions}
+The last two columns of Table~\ref{tab:main_results} report the HBEFA-based
+CO\textsubscript{2} and fuel totals (Section~\ref{sec:metrics}); neither quantity is ever
+exposed to the agent reward, so these are strictly post-hoc consequences of the learned
+timing. The ordering mirrors the
+travel-time ranking: the proxy policy yields the lowest emissions in the camera-deployable
+class, reducing episode CO\textsubscript{2} by $9.8\%$ against fixed-time and $8.2\%$ against
+Webster, consistent with delay---not the controller's objective function---being the dominant
+driver of idling emissions.
+
+% tab:emissions merged into tab:main_results (last two columns) 2026-07-05; values from
+% results/paper1_mappo/eval_tables/n3_grid_MERGED (mg -> kg).
