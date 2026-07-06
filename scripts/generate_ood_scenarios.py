@@ -136,6 +136,11 @@ def gen_moto_sweep(name: str, seed: int = 42) -> None:
     trips = net_dir / "demand_eval.trips.xml"
     if not trips.exists():
         trips = net_dir / "demand_train.trips.xml"
+    if not trips.exists():
+        raise FileNotFoundError(
+            f"{net_dir}/demand_eval.trips.xml (and demand_train fallback) missing — "
+            "the moto sweep re-routes from trips; pull the committed trips file or "
+            "run generate_demand.py first")
     print(f"\n=== {name} motorcycle-share sweep (trips={trips.name}) ===")
 
     other_sum = sum(BASE_OTHER.values())
