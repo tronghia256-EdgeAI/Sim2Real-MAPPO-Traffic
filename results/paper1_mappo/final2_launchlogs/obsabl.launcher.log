@@ -1,0 +1,36 @@
+campaign final2_obsabl_03M: 9 jobs (1 nets x 1 algos x 1 obs-modes x 3 seeds, minus ippo-privileged), max_workers=9, stagger=45.0s
+artifacts -> /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/final2_obsabl_03M
+[launch] n3_grid_mappo_proxy_o-no_class_shares_seed42 (pid 41056) -> n3_grid_mappo_proxy_o-no_class_shares_seed42.log
+[launch] n3_grid_mappo_proxy_o-no_class_shares_seed123 (pid 41071) -> n3_grid_mappo_proxy_o-no_class_shares_seed123.log
+[launch] n3_grid_mappo_proxy_o-no_class_shares_seed456 (pid 41085) -> n3_grid_mappo_proxy_o-no_class_shares_seed456.log
+[launch] n3_grid_mappo_proxy_o-no_pressure_feature_seed42 (pid 41121) -> n3_grid_mappo_proxy_o-no_pressure_feature_seed42.log
+[launch] n3_grid_mappo_proxy_o-no_pressure_feature_seed123 (pid 41138) -> n3_grid_mappo_proxy_o-no_pressure_feature_seed123.log
+[launch] n3_grid_mappo_proxy_o-no_pressure_feature_seed456 (pid 41151) -> n3_grid_mappo_proxy_o-no_pressure_feature_seed456.log
+[launch] n3_grid_mappo_proxy_o-lane_truncated_seed42 (pid 41158) -> n3_grid_mappo_proxy_o-lane_truncated_seed42.log
+[launch] n3_grid_mappo_proxy_o-lane_truncated_seed123 (pid 41168) -> n3_grid_mappo_proxy_o-lane_truncated_seed123.log
+[launch] n3_grid_mappo_proxy_o-lane_truncated_seed456 (pid 41178) -> n3_grid_mappo_proxy_o-lane_truncated_seed456.log
+[finish] n3_grid_mappo_proxy_o-no_class_shares_seed456: OK (64308.0s)
+[finish] n3_grid_mappo_proxy_o-lane_truncated_seed456: OK (65209.0s)
+[finish] n3_grid_mappo_proxy_o-no_class_shares_seed42: OK (65920.0s)
+[finish] n3_grid_mappo_proxy_o-no_pressure_feature_seed456: OK (65815.0s)
+[finish] n3_grid_mappo_proxy_o-lane_truncated_seed42: OK (66175.0s)
+[finish] n3_grid_mappo_proxy_o-no_pressure_feature_seed42: OK (66330.0s)
+[finish] n3_grid_mappo_proxy_o-no_class_shares_seed123: OK (66770.0s)
+[finish] n3_grid_mappo_proxy_o-no_pressure_feature_seed123: OK (66886.0s)
+[finish] n3_grid_mappo_proxy_o-lane_truncated_seed123: OK (66856.0s)
+
+==================================================================
+CAMPAIGN SUMMARY
+==================================================================
+  job                          status     runtime  exit
+  n3_grid_mappo_proxy_o-no_class_shares_seed42 done        65920s  0
+  n3_grid_mappo_proxy_o-no_class_shares_seed123 done        66770s  0
+  n3_grid_mappo_proxy_o-no_class_shares_seed456 done        64308s  0
+  n3_grid_mappo_proxy_o-no_pressure_feature_seed42 done        66330s  0
+  n3_grid_mappo_proxy_o-no_pressure_feature_seed123 done        66886s  0
+  n3_grid_mappo_proxy_o-no_pressure_feature_seed456 done        65815s  0
+  n3_grid_mappo_proxy_o-lane_truncated_seed42 done        66175s  0
+  n3_grid_mappo_proxy_o-lane_truncated_seed123 done        66856s  0
+  n3_grid_mappo_proxy_o-lane_truncated_seed456 done        65209s  0
+
+  manifest: /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/final2_obsabl_03M/campaign_manifest.json

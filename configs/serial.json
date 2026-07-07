@@ -1,7 +1,0 @@
-{
-  "port": "COM9",
-  "baudrate": 115200,
-  "timeout": 1,
-  "yellow_duration": 3,
-  "red_gap": 1
-}

@@ -1,0 +1,24 @@
+campaign final2_n2_03M: 5 jobs (1 nets x 1 algos x 1 obs-modes x 5 seeds, minus ippo-privileged), max_workers=5, stagger=45.0s
+artifacts -> /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/final2_n2_03M
+[launch] n2_corridor_mappo_proxy_seed42 (pid 41057) -> n2_corridor_mappo_proxy_seed42.log
+[launch] n2_corridor_mappo_proxy_seed123 (pid 41070) -> n2_corridor_mappo_proxy_seed123.log
+[launch] n2_corridor_mappo_proxy_seed456 (pid 41084) -> n2_corridor_mappo_proxy_seed456.log
+[launch] n2_corridor_mappo_proxy_seed789 (pid 41120) -> n2_corridor_mappo_proxy_seed789.log
+[launch] n2_corridor_mappo_proxy_seed1337 (pid 41137) -> n2_corridor_mappo_proxy_seed1337.log
+[finish] n2_corridor_mappo_proxy_seed42: OK (8244.0s)
+[finish] n2_corridor_mappo_proxy_seed789: OK (10405.0s)
+[finish] n2_corridor_mappo_proxy_seed1337: OK (10730.0s)
+[finish] n2_corridor_mappo_proxy_seed456: OK (10910.0s)
+[finish] n2_corridor_mappo_proxy_seed123: OK (14369.0s)
+
+==================================================================
+CAMPAIGN SUMMARY
+==================================================================
+  job                          status     runtime  exit
+  n2_corridor_mappo_proxy_seed42 done         8244s  0
+  n2_corridor_mappo_proxy_seed123 done        14369s  0
+  n2_corridor_mappo_proxy_seed456 done        10910s  0
+  n2_corridor_mappo_proxy_seed789 done        10405s  0
+  n2_corridor_mappo_proxy_seed1337 done        10730s  0
+
+  manifest: /home/nghiale_31241024698/Sim2Real-MAPPO-Traffic/results/paper1_mappo/final2_n2_03M/campaign_manifest.json

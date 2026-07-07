@@ -104,6 +104,14 @@ results/paper1_mappo/campaign_smoke/
 runs/
 
 # =============================================================================
+# Paper-1 checkpoint + training-log archive (relocated 2026-07-07 out of
+# results/ into models/ and logs/). Bulk binaries kept as a LOCAL backup only —
+# the paper cites eval outputs under results/paper1_mappo/, never these weights.
+# =============================================================================
+models/paper1_mappo/
+logs/paper1_mappo/
+
+# =============================================================================
 # Scaled networks (N1/N2/N3): commit topology + lane_groups + sumocfgs;
 # demand regenerates deterministically via scripts/generate_demand.py --seed
 # (same convention as sumo_configs/evaluation above). tls_actuated.add.xml
