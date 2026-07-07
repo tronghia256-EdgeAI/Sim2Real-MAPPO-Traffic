@@ -1,0 +1,40 @@
+cff-version: 1.2.0
+message: "If you use this software or its results, please cite the paper below."
+title: "Camera-Observable MAPPO for Traffic Signal Control"
+abstract: >-
+  A decentralized multi-agent reinforcement learning (MAPPO) controller for
+  traffic signal control whose entire observation and reward are computable from
+  a single roadside camera (YOLO detections + ByteTrack trajectories), trained
+  and evaluated in SUMO under motorcycle-dominant mixed traffic.
+type: software
+authors:
+  - family-names: Le
+    given-names: Trong Nghia
+    email: tronghia256@gmail.com
+  - family-names: Nguyen
+    given-names: Thien Bao
+    affiliation: "Institute of Intelligent and Interactive Technologies (3IT), University of Economics Ho Chi Minh City (UEH)"
+    email: baont@ueh.edu.vn
+version: "1.0.0"
+date-released: "2026-07-07"
+license: MIT
+repository-code: "https://github.com/tronghia256-EdgeAI/Sim2Real-MAPPO-Traffic"
+keywords:
+  - reinforcement learning
+  - traffic signal control
+  - multi-agent reinforcement learning
+  - MAPPO
+  - sim-to-real
+  - computer vision
+  - SUMO
+preferred-citation:
+  type: article
+  title: "Camera-Observable MAPPO for Traffic Signal Control"
+  authors:
+    - family-names: Le
+      given-names: Trong Nghia
+    - family-names: Nguyen
+      given-names: Thien Bao
+  journal: "IEEE Transactions on Intelligent Transportation Systems"
+  year: 2026
+  notes: "Under review."

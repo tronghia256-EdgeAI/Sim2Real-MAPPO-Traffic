@@ -1,14 +1,34 @@
-numpy
-scipy
-torch
-tensorboard
-opencv-python
-ultralytics
-pyserial
-matplotlib
-sumolib
-traci
-pettingzoo
-gymnasium
-streamlit
-pandas
+# Python dependencies for Paper 1 (Camera-Observable MAPPO for TSC).
+# Lower bounds below are known-good floors; the exact versions the reported
+# results were produced with are documented in README.md ("Tested environment").
+#
+# NOTE on PyTorch: install the build matching your platform/accelerator from
+# https://pytorch.org (the CPU wheel used here is torch==2.11.0+cpu).
+
+# --- Core scientific stack ---
+numpy>=1.26
+scipy>=1.11
+pandas>=2.2
+matplotlib>=3.8
+
+# --- Deep learning ---
+torch>=2.1
+
+# --- RL environment ---
+gymnasium>=1.0
+pettingzoo>=1.24
+
+# --- SUMO Python bindings (ship with a SUMO install; pinned loosely) ---
+sumolib>=1.20
+traci>=1.20
+
+# --- Training utilities ---
+tensorboard>=2.13
+
+# --- Vision proxy / companion deployment (not exercised by Paper 1 results) ---
+ultralytics>=8.3
+opencv-python>=4.9
+pyserial>=3.5
+
+# --- Optional dashboard ---
+streamlit>=1.30

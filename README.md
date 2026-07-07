@@ -4,12 +4,13 @@
 
 ### Multi-Agent Reinforcement Learning that Learns to Control Traffic Signals from Signals a Camera Can Actually See
 
+[![Paper](https://img.shields.io/badge/Paper-IEEE%20T--ITS%20(under%20review)-b31b1b?style=for-the-badge)](#-citation)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
-[![Python](https://img.shields.io/badge/Python-3.9%2B-3b82f6?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
+[![Python](https://img.shields.io/badge/Python-3.10%2B-3b82f6?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![SUMO](https://img.shields.io/badge/SUMO-1.20%2B-f97316?style=for-the-badge)](https://sumo.dlr.de/)
 [![MAPPO](https://img.shields.io/badge/MARL-MAPPO%20(CTDE)-7c3aed?style=for-the-badge)](https://arxiv.org/abs/2103.01955)
 
-[Overview](#-overview) · [Contributions](#-contributions) · [Results](#-results) · [Method](#-method) · [Install](#-installation) · [Usage](#-usage) · [Docs](#-documentation)
+[Overview](#-overview) · [Contributions](#-contributions) · [Results](#-results) · [Method](#-method) · [Install](#-installation) · [Usage](#-usage) · [Docs](#-documentation) · [Cite](#-citation)
 
 </div>
 
@@ -30,7 +31,8 @@ observation feature and every reward term is computable from a single roadside c
 (YOLO detections + ByteTrack trajectories), and benchmarks it against strong classical and
 instrumented baselines under motorcycle-dominant mixed traffic.
 
-> This repository is the code behind **Paper 1 (IEEE T-ITS)**. The real-time hardware deployment
+> This repository is the code behind **Paper 1**, *Camera-Observable MAPPO for Traffic Signal
+> Control* (under review at **IEEE T-ITS**, 2026). The real-time hardware deployment
 > (cameras → policy → controller) is a companion *System* paper; its runtime code lives under
 > `src/` but is not exercised by any result here.
 
@@ -132,6 +134,20 @@ pip install -r requirements.txt
 export SUMO_HOME=/usr/share/sumo   # Windows: $env:SUMO_HOME = "C:\Program Files (x86)\Eclipse\Sumo"
 ```
 
+### Tested environment
+
+The reported results were produced with the following stack. `requirements.txt` carries looser
+floors; the exact versions below are the known-good reference.
+
+| Component | Version | | Component | Version |
+|---|---|---|---|---|
+| Python | 3.10.9 | | PyTorch | 2.11.0 (CPU) |
+| SUMO | 1.24.0 | | NumPy / SciPy | 1.26.4 / 1.15.3 |
+| OS | Windows 11 (26200) | | Gymnasium / PettingZoo | 1.2.3 / 1.25.0 |
+| Ultralytics / OpenCV | 8.4.39 / 4.13.0 | | pandas / Matplotlib | 2.2.3 / 3.10.3 |
+
+Training and evaluation are CPU-only; no GPU is required.
+
 ---
 
 ## 🚀 Usage
@@ -162,8 +178,9 @@ python scripts/check_obs_match.py
 pytest -m "not slow and not serial"
 ```
 
-The full campaign → tables → figures pipeline is documented in
-[`docs/reproduction.md`](docs/reproduction.md) (turnkey via
+Trained checkpoints under `models/` are gitignored (bulk artifacts): train first with the
+command above, or point `--checkpoint` at your own run directory. The full campaign → tables →
+figures pipeline is documented in [`docs/reproduction.md`](docs/reproduction.md) (turnkey via
 `scripts/build_paper_artifacts.py`).
 
 ---
@@ -178,6 +195,7 @@ The full campaign → tables → figures pipeline is documented in
 │   ├── runners/              # train_ppo, eval_compare (canonical table harness)
 │   ├── baselines/            # webster, actuated, max_pressure, sotl
 │   ├── ablation/ · plots/    # reward/obs ablations, multi-seed figures
+│   ├── calibration/          # sensing-noise calibration from detector statistics
 │   └── common/tripinfo.py    # shared travel/waiting/P95/CO2 parser
 ├── scripts/                  # generate_networks · generate_demand · generate_ood_scenarios
 │                             # parallel_launcher · build_paper_artifacts · check_obs_match
@@ -189,7 +207,7 @@ The full campaign → tables → figures pipeline is documented in
 ├── models/paper1_mappo/      # trained checkpoints (bulk, local backup — gitignored)
 ├── figures/                  # publication-ready figures (PDF/PNG/SVG)
 ├── docs/                     # state.md · reward.md · reproduction.md · README (index)
-└── tests/ · requirements.txt · pytest.ini · NOTES.md · LICENSE
+└── tests/ · requirements.txt · pytest.ini · CITATION.cff · LICENSE
 ```
 
 ---
@@ -201,15 +219,29 @@ The full campaign → tables → figures pipeline is documented in
 | [`docs/state.md`](docs/state.md) | The 26-dim observation — every feature, SUMO source, vision proxy, alignment |
 | [`docs/reward.md`](docs/reward.md) | The six-term reward (rev. 1.2.0): equation, derivation, weights |
 | [`docs/reproduction.md`](docs/reproduction.md) | Campaign → tables → figures, end to end |
-| [`NOTES.md`](NOTES.md) | Full engineering brief: MDP, architecture, constraints, eval protocol, commands |
 
 ---
 
 ## 🔖 Citation
 
+If you use this work, please cite the paper (currently **under review**):
+
+```bibtex
+@article{trongnghia2026_camera_mappo,
+  author  = {Le, Trong Nghia and Nguyen, Thien Bao},
+  title   = {{Camera-Observable MAPPO for Traffic Signal Control}},
+  journal = {IEEE Transactions on Intelligent Transportation Systems},
+  year    = {2026},
+  note    = {Under review}
+}
+```
+
+<details>
+<summary>Software / repository citation</summary>
+
 ```bibtex
 @software{sim2real_mappo_traffic_2026,
-  author    = {Nguyen, Trong Hia},
+  author    = {Le, Trong Nghia and Nguyen, Thien Bao},
   title     = {{Camera-Observable MAPPO for Traffic Signal Control}},
   year      = {2026},
   publisher = {GitHub},
@@ -217,8 +249,9 @@ The full campaign → tables → figures pipeline is documented in
   license   = {MIT}
 }
 ```
+</details>
 
-See [`CITATION.cff`](CITATION.cff) for full metadata.
+Machine-readable metadata is in [`CITATION.cff`](CITATION.cff) (GitHub's "Cite this repository").
 
 ---
 
