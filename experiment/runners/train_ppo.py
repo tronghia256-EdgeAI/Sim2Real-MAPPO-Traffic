@@ -45,7 +45,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
-# repo convention (see NOTES.md §3): scripts add the project root to sys.path
+# repo convention: scripts add the project root to sys.path
 # so `python experiment/runners/train_ppo.py` works without pip install -e.
 _ROOT = Path(__file__).resolve().parents[2]
 if str(_ROOT) not in sys.path:

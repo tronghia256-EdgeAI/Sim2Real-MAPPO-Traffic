@@ -10,5 +10,5 @@ references behind it.
 | [`reward.md`](reward.md) | The six-term PRESSLIGHT-extended reward (revision 1.2.0): equation, per-term derivation, weights, and the sim-to-real alignment table. |
 | [`reproduction.md`](reproduction.md) | Turnkey path from a finished training campaign to paper-ready tables and figures. |
 
-For the full engineering brief — MDP formulation, architecture constraints, evaluation
-protocol, and all runnable commands — see [`../NOTES.md`](../NOTES.md) at the repository root.
+The full MDP formulation, architecture, and evaluation protocol are documented in the
+manuscript; the runnable commands live in the top-level [`README`](../README.md#-usage).

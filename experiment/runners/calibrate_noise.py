@@ -65,7 +65,7 @@ from src.traffic_env.config import DEFAULT_LANE_FEATURE_NAMES
 CONFIG_OUT = _ROOT / "configs" / "noise_config.json"
 IIIE_OUT = _ROOT / "results" / "paper1_mappo" / "iii_e" / "feature_recovery.csv"
 
-# custom YOLO vehicle classes (NOTES.md 4.1): 1=bus 2=car 3=moto 4=truck; 0=accident
+# custom YOLO vehicle classes: 1=bus 2=car 3=moto 4=truck; 0=accident
 VEHICLE_CLASS_IDS = (1, 2, 3, 4)
 
 

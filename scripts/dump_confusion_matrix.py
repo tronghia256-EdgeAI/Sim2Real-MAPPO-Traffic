@@ -13,7 +13,7 @@ calibrate_noise expects [true, predicted] (so a row sum is "all instances of a
 true class" → 1 − diagonal/row = misclassification / class-flip rate). This
 script TRANSPOSES by default to produce the [true, predicted] convention.
 
-Class index order = your model's class order. NOTES.md §4.1 assumes
+Class index order = your model's class order. This repo assumes
 0=accident, 1=bus, 2=car, 3=motorcycle, 4=truck; calibrate_noise averages the
 flip rate over the VEHICLE classes 1..4 only (accident + background ignored).
 The printed class names let you verify the order matches.
