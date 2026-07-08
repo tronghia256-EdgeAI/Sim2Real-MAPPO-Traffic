@@ -56,6 +56,9 @@ def parse_args() -> argparse.Namespace:
     p = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     p.add_argument("--checkpoint", required=True, help="best_model.pt of a trained run")
     p.add_argument("--network", choices=sorted(NETWORKS), default="n3_grid")
+    p.add_argument("--sumocfg", default="sumo_config.sumocfg",
+                   help="which .sumocfg inside the network dir to load "
+                        "(e.g. sumo_config_ood_high.sumocfg for a congested network)")
     p.add_argument("--seed", type=int, default=42, help="route seed")
     p.add_argument("--gif", default="figures/demo_mappo.gif", help="output GIF path")
     p.add_argument("--capture-start", type=int, default=600,
@@ -110,8 +113,11 @@ def main() -> int:
 
     net_dir = PROJECT_ROOT / NETWORKS[args.network]
     tls_ids, lane_groups = load_lane_groups_json(net_dir / "lane_groups.json")
+    sumocfg_path = net_dir / args.sumocfg
+    if not sumocfg_path.exists():
+        raise SystemExit(f"[gif] no such sumocfg: {sumocfg_path}")
     cfg = build_default_config(
-        sumo_cfg_path=str(net_dir / "sumo_config.sumocfg"),
+        sumo_cfg_path=str(sumocfg_path),
         gui=True,
         tls_ids=tls_ids,
         manual_lane_groups=lane_groups,

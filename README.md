@@ -71,6 +71,15 @@ references that a camera-only stack is designed to replace.
 
 <div align="center">
 
+<img src="figures/demo_intersection.gif" alt="Trained MAPPO controlling a saturated four-way intersection on the N3 grid under high (out-of-distribution) demand: motorcycles filtering forward, queues discharging phase by phase" width="80%">
+
+*Trained MAPPO driving a saturated N3 intersection under high (out-of-distribution) demand —
+acting only on the 26-dim camera-computable observation.*
+
+</div>
+
+<div align="center">
+
 ![Main comparison on the N3 grid](figures/comparison_n3_grid.png)
 
 </div>
