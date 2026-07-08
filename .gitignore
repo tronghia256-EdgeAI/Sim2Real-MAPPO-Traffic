@@ -132,3 +132,5 @@ notebooks/.ipynb_checkpoints/
 # =============================================================================
 .aiignore
 NOTES.md
+# LaTeX manuscript (kept local / Overleaf only, not on GitHub)
+docs/paper1_latex/
