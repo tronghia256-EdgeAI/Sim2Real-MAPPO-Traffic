@@ -31,6 +31,15 @@ observation feature and every reward term is computable from a single roadside c
 (YOLO detections + ByteTrack trajectories), and benchmarks it against strong classical and
 instrumented baselines under motorcycle-dominant mixed traffic.
 
+<div align="center">
+
+<img src="figures/fig1_concept.png" alt="Concept overview: prior RL-TSC trains on privileged state and reward that no camera can measure, breaking at the sim-to-real boundary; ours restricts both state and reward to camera-computable proxies, so the identical 26-dim schema crosses unchanged" width="88%">
+
+*Prior RL-TSC breaks at the sim-to-real boundary (observation **and** reward gap);
+this work restricts both to camera-computable proxies, so the identical 26-dim schema crosses unchanged.*
+
+</div>
+
 > This repository is the code behind **Paper 1**, *Camera-Observable MAPPO for Traffic Signal
 > Control* (under review at **IEEE T-ITS**, 2026). The real-time hardware deployment
 > (cameras → policy → controller) is a companion *System* paper; its runtime code lives under
@@ -85,6 +94,18 @@ references that a camera-only stack is designed to replace.
   instrumented ceiling, so the queue-centric objective adds no headroom — a boundary of the
   objective family, analyzed as a *topology-dependence* result in the paper.
 
+<details>
+<summary><b>Sensing-noise robustness (fail-soft)</b> — performance stays ahead of the best
+deployable baseline across the full 0–2× calibrated noise envelope; a full camera dropout
+degrades only to parity</summary>
+
+<div align="center">
+
+<img src="figures/noise_robustness.png" alt="Noise robustness: mean travel time vs noise-envelope scale, plus structural failure modes (1-step latency, camera dropout) against the Webster baseline" width="80%">
+
+</div>
+</details>
+
 <div align="center">
 
 ![Training convergence](figures/convergence.png)
@@ -98,6 +119,15 @@ references that a camera-only stack is designed to replace.
 **One decentralized MAPPO agent per intersection**, centralized-critic / decentralized-actor
 (CTDE): the critic sees the global state during training, the actors act on a local 26-dim
 observation at execution.
+
+<div align="center">
+
+<img src="figures/system_architecture.png" alt="System architecture: camera ROIs → YOLO+ByteTrack → 26-dim observation → parameter-shared actor (deployment path); centralized multi-head critic and per-agent GAE exist only during SUMO training" width="100%">
+
+*Deployment path (top, camera-only) vs. training-only machinery (bottom, SUMO/CTDE).
+Dashed arrows are couplings that exist only during training.*
+
+</div>
 
 **Observation (26-dim per agent).** Four approaches × five features
 (`effective_queue_norm`, `occupancy_norm`, `avg_speed_norm`, `motorbike_share`,
