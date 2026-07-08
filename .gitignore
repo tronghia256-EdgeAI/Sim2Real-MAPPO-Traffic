@@ -128,9 +128,6 @@ notebooks/.ipynb_checkpoints/
 .ipynb_checkpoints/
 
 # =============================================================================
-# Tool-specific (not part of the project)
-# =============================================================================
-.aiignore
-NOTES.md
 # LaTeX manuscript (kept local / Overleaf only, not on GitHub)
+# =============================================================================
 docs/paper1_latex/
