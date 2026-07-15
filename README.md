@@ -4,7 +4,7 @@
 
 ### Multi-Agent Reinforcement Learning that Learns to Control Traffic Signals from Signals a Camera Can Actually See
 
-[![Paper](https://img.shields.io/badge/Paper-IEEE%20T--ITS%20(under%20review)-b31b1b?style=for-the-badge)](#-citation)
+[![Paper](https://img.shields.io/badge/Paper-Computers%20%26%20Electrical%20Engineering%20(under%20review)-ff6c00?style=for-the-badge)](#-citation)
 [![License: MIT](https://img.shields.io/badge/License-MIT-22c55e?style=for-the-badge)](LICENSE)
 [![Python](https://img.shields.io/badge/Python-3.10%2B-3b82f6?style=for-the-badge&logo=python&logoColor=white)](https://www.python.org/)
 [![SUMO](https://img.shields.io/badge/SUMO-1.20%2B-f97316?style=for-the-badge)](https://sumo.dlr.de/)
@@ -41,7 +41,7 @@ this work restricts both to camera-computable proxies, so the identical 26-dim s
 </div>
 
 > This repository is the code behind **Paper 1**, *Camera-Observable MAPPO for Traffic Signal
-> Control* (under review at **IEEE T-ITS**, 2026). The real-time hardware deployment
+> Control* (under review at **Computers and Electrical Engineering**, Elsevier, 2026). The real-time hardware deployment
 > (cameras → policy → controller) is a companion *System* paper; its runtime code lives under
 > `src/` but is not exercised by any result here.
 
@@ -269,7 +269,7 @@ If you use this work, please cite the paper (currently **under review**):
 @article{trongnghia2026_camera_mappo,
   author  = {Le, Trong Nghia and Nguyen, Thien Bao},
   title   = {{Camera-Observable MAPPO for Traffic Signal Control}},
-  journal = {IEEE Transactions on Intelligent Transportation Systems},
+  journal = {Computers and Electrical Engineering},
   year    = {2026},
   note    = {Under review}
 }
